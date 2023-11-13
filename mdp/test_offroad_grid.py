@@ -1,10 +1,11 @@
 import unittest
 import visdom
-from irl.mdp.offroad_grid import OffroadGrid
+import sys
+sys.path.append("/root/medirl/")
+from mdp.offroad_grid import OffroadGrid
 import numpy as np
 import numpy.random as rn
-from loader.offroad_loader import OffroadLoader, get_max_min_feature, get_mean_feature
-
+from loader.single_data_loader import OffroadLoader
 
 def make_random_model():
     grid_size = rn.randint(2, 15)
@@ -18,11 +19,11 @@ class TestOffroadGrid(unittest.TestCase):
         self.vis = visdom.Visdom()
 
     def test_main(self):
-        grid_size = 30
+        grid_size = 32
         discount = 0.9
         model = OffroadGrid(grid_size, discount)
         loader = OffroadLoader(grid_size=grid_size)
-        feat, traj = loader[1]
+        feat, traj = loader[0]
         print(traj)
         traj[np.isnan(traj)] = 0.0  # replace nan as 0.0
         self.vis.heatmap(X=traj, opts=dict(colormap='Electric', title='height_mean'))
