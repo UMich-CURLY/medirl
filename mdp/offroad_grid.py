@@ -31,9 +31,9 @@ class OffroadGrid(object):
     """
 
     def __init__(self, grid_size, discount):
-        self.actions = ((0, 1), (1, 0), (0, -1), (-1, 0))  # 0->RIGHT, 1->UP, 2->LEFT, 3->DOWN
+        # self.actions = ((0, 1), (1, 0), (0, -1), (-1, 0))  # 0->RIGHT, 1->UP, 2->LEFT, 3->DOWN
         # 0->RIGHT, 1->RIGHT-UP, 2->UP, 3->LEFT-UP, 4->LEFT, 5->LEFT-DOWN, 6->DOWN, 7-RIGHT-DOWN
-        # self.actions = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1))
+        self.actions = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1))
         self.n_actions = len(self.actions)
         self.n_states = grid_size ** 2
         self.grid_size = grid_size
@@ -61,7 +61,7 @@ class OffroadGrid(object):
             feat_vector = feat[:, x, y]
             self.feat_mat.append(feat_vector)
 
-        self.feat_mat = np.stack(self.feat_mat, axis=0)
+        self.feat_mat = feat
 
     def find_feat_expect(self, traj):
         """
