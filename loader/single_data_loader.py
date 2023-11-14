@@ -33,7 +33,14 @@ class OffroadLoader(Dataset):
     def __getitem__(self, index):
         goal_sink_feat = np.array(Image.open(self.image_fol+"/goal_sink.png")).T
         goal_sink_feat = goal_sink_feat/255*np.ones(goal_sink_feat.shape)
-        goal_sink_feat = goal_sink_feat[1:]
+        temp_sink_feat = np.zeros([1,goal_sink_feat.shape[1], goal_sink_feat.shape[2]])
+        for i in range(goal_sink_feat.shape[1]):
+            for j in range(goal_sink_feat.shape[2]):
+                if (goal_sink_feat[1,i,j] == 1):
+                    temp_sink_feat[0,i,j] = -1
+                if (goal_sink_feat[2,i,j] == 1):
+                    temp_sink_feat[0,i,j] = 1
+        goal_sink_feat = temp_sink_feat
         semantic_img_feat = np.array(Image.open(self.image_fol+"/semantic_img.png"))[:,:,0:3].T
         with open(self.image_fol+"/trajectory.npy", 'rb') as f:
             traj = np.load(f)
@@ -46,7 +53,7 @@ class OffroadLoader(Dataset):
         feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 0)
         # normalize features locally
 
-        for i in range(5):
+        for i in range(feat.shape[0]):
             print(feat[i].shape)
             print("Before nomalize", np.max(feat[i]))  
             feat[i] = feat[i] - np.mean(feat[i])*np.ones(feat[i].shape)
