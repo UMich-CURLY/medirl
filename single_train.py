@@ -26,8 +26,8 @@ logging.basicConfig(filename='maxent_irl_social.log', format='%(levelname)s. %(a
 pre_train_weight = None
 vis_per_steps = 60
 test_per_steps = 20
-resume = "step280-loss0.5675923794730127.pth"
-# resume = None
+# resume = "step280-loss0.5675923794730127.pth"
+resume = None
 exp_name = '6.34'
 grid_size = 32
 discount = 0.9
@@ -53,7 +53,7 @@ train_loader = DataLoader(train_loader, num_workers=n_worker, batch_size=batch_s
 test_loader = OffroadLoader(grid_size=grid_size, train=False, tangent=False)
 test_loader = DataLoader(test_loader, num_workers=n_worker, batch_size=batch_size, shuffle=True)
 
-net = OnlyEnvDilated()
+net = OnlyEnvDilated(feat_in_size = 4)
 #net = OneStageDilated(feat_out_size=25)
 step = 0
 nll_cma = 0
