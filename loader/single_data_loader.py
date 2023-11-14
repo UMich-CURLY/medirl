@@ -31,23 +31,35 @@ class OffroadLoader(Dataset):
     
 
     def __getitem__(self, index):
-        goal_sink_feat = np.array(Image.open(self.image_fol+"/goal_sink.png"))
-        semantic_img_feat = np.array(Image.open(self.image_fol+"/semantic_img.png"))[:,:,0:3]
+        goal_sink_feat = np.array(Image.open(self.image_fol+"/goal_sink.png")).T
+        goal_sink_feat = goal_sink_feat/255*np.ones(goal_sink_feat.shape)
+        goal_sink_feat = goal_sink_feat[1:]
+        semantic_img_feat = np.array(Image.open(self.image_fol+"/semantic_img.png"))[:,:,0:3].T
         with open(self.image_fol+"/trajectory.npy", 'rb') as f:
             traj = np.load(f)
+
+        for i in range(traj.shape[0]):
+            temp = traj[i,0] 
+            traj[i,0]= traj[i,1]
+            traj[i,1] = temp 
         # visualize rgb
-        feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 2).T
+        feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 0)
         # normalize features locally
-        for i in range(6):
-            feat[i] = (feat[i] - np.mean(feat[i])) / np.std(feat[i])
-        
+
+        for i in range(5):
+            print(feat[i].shape)
+            print("Before nomalize", np.max(feat[i]))  
+            feat[i] = feat[i] - np.mean(feat[i])*np.ones(feat[i].shape)
+            feat[i] = feat[i] / np.std(feat[i])*np.ones(feat[i].shape)
+            print("for i mean is std is ", i, np.mean(feat[i]), np.std(feat[i]))
+            print("After normalize min max", np.min(feat[i]), np.max(feat[i]))       
  
     
 
         return feat, traj
 
     def __len__(self):
-        return len(self.data_list)
+        return 1
 
     def auto_pad_past(self, traj):
         """

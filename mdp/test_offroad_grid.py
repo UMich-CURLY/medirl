@@ -24,12 +24,11 @@ class TestOffroadGrid(unittest.TestCase):
         model = OffroadGrid(grid_size, discount)
         loader = OffroadLoader(grid_size=grid_size)
         feat, traj = loader[0]
-        print(traj)
         traj[np.isnan(traj)] = 0.0  # replace nan as 0.0
         self.vis.heatmap(X=traj, opts=dict(colormap='Electric', title='height_mean'))
         feat[np.isnan(feat)] = -10.0  # replace nan as -10.0 (put a proper small number)
         model.load_feat(feat)
-        self.vis.heatmap(X=model.feat_mat, opts=dict(colormap='Electric', title='height_mean'))
+        self.vis.heatmap(X=model.feat_mat.T, opts=dict(colormap='Electric', title='height_mean'))
 
 
     def test_prob_sum_to_one(self):
@@ -39,7 +38,7 @@ class TestOffroadGrid(unittest.TestCase):
         """
         for _ in range(5):
             model = make_random_model()
-            self.assertTrue(np.isclose(model.transition_prob.sum(axis=2), 1).all())
+            self.assertTrue(np.isclose(model.transit_table.sum(axis=2), 1).all())
 
 
 if __name__ == '__main__':
