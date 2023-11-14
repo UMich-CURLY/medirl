@@ -11,7 +11,7 @@ from numba import jit
 
 import time
 from scipy.spatial.distance import directed_hausdorff
-
+from IPython import embed
 class OffroadGrid(object):
     """
     Offroad grid MDP model:
@@ -61,7 +61,8 @@ class OffroadGrid(object):
             feat_vector = feat[:, x, y]
             self.feat_mat.append(feat_vector)
 
-        self.feat_mat = feat
+        self.feat_mat = np.stack(self.feat_mat, axis=0)
+        print(self.feat_mat.shape)
 
     def find_feat_expect(self, traj):
         """
@@ -446,8 +447,12 @@ class OffroadGrid(object):
 
             state = self.xy_to_idx((demo_traj[i, 0], demo_traj[i, 1]))
             prob *= policy[state, action]
-
-        nll = -math.log(prob) / demo_traj.shape[0]
+            print("Policy action pait is", policy[state,action])
+        print("Prob is ", prob)
+        try:
+            nll = -math.log(prob) / demo_traj.shape[0]
+        except:
+            nll = -math.inf
         return nll
 
 
