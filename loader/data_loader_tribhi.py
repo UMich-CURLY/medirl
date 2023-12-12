@@ -10,7 +10,7 @@ import scipy.io as sio
 from PIL import Image
 import numpy as np
 from scipy import optimize
-from IPython import embed
+
 np.set_printoptions(threshold=np.inf, suppress=True)
 import random
 import copy
@@ -18,11 +18,27 @@ import math
 
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data/irl_data_dec_11_rl_agent', pre_train=False, tangent=False,
                  more_kinematic=None):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
-        self.image_fol = datadir + "demo_0"
+        # if train:
+        #     self.data_dir = datadir + 'train_data/'
+        # else:
+        #     self.data_dir = datadir + 'test_data/'
+
+        # if demo is not None:
+        #     self.data_dir = datadir + '/irl_data/' + demo
+        self.data_dir = datadir
+        items = os.listdir(self.data_dir)
+        self.data_list = []
+        for item in items:
+            image_fol = self.data_dir + '/' + item+"/traj_fixed.npy"
+            if not (os.path.exists(image_fol)):
+                continue
+            self.data_list.append(self.data_dir + '/' + item)
+
+
         #self.data_normalization = sio.loadmat(datadir + '/irl_data/train-data-mean-std.mat')
         self.pre_train = pre_train
 
@@ -31,6 +47,7 @@ class OffroadLoader(Dataset):
     
 
     def __getitem__(self, index):
+        self.image_fol = self.data_list[index]
         goal_sink_feat = np.array(Image.open(self.image_fol+"/goal_sink.png")).T
         goal_sink_feat = goal_sink_feat/255*np.ones(goal_sink_feat.shape)
         temp_sink_feat = np.zeros([1,goal_sink_feat.shape[1], goal_sink_feat.shape[2]])
@@ -42,7 +59,7 @@ class OffroadLoader(Dataset):
                     temp_sink_feat[0,i,j] = 10
         goal_sink_feat = temp_sink_feat
         semantic_img_feat = np.array(Image.open(self.image_fol+"/semantic_img.png"))[:,:,0:3].T
-        with open(self.image_fol+"/trajectory.npy", 'rb') as f:
+        with open(self.image_fol+"/traj_fixed.npy", 'rb') as f:
             traj = np.load(f)
 
         for i in range(traj.shape[0]):
@@ -50,9 +67,9 @@ class OffroadLoader(Dataset):
             traj[i,0]= traj[i,1]
             traj[i,1] = temp 
         # visualize rgb
-        with open(self.image_fol+"/sdf.npy", 'rb') as f:
-            sdf_feat = np.load(f)
-        feat = np.concatenate((goal_sink_feat, sdf_feat.T), axis = 0)
+        # with open(self.image_fol+"/sdf.npy", 'rb') as f:
+        #     sdf_feat = np.load(f)
+        feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 0)
         # normalize features locally
 
         for i in range(feat.shape[0]):
@@ -68,7 +85,7 @@ class OffroadLoader(Dataset):
         return feat, traj
 
     def __len__(self):
-        return 1
+        return len(self.data_list)
 
     def auto_pad_past(self, traj):
         """

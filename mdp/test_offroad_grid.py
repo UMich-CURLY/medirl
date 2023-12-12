@@ -5,7 +5,7 @@ sys.path.append("/root/medirl/")
 from mdp.offroad_grid import OffroadGrid
 import numpy as np
 import numpy.random as rn
-from loader.single_data_loader import OffroadLoader
+from loader.data_loader_tribhi import OffroadLoader
 
 def make_random_model():
     grid_size = rn.randint(2, 15)
@@ -16,7 +16,7 @@ def make_random_model():
 class TestOffroadGrid(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.vis = visdom.Visdom()
+        self.vis = visdom.Visdom(port = 8099)
 
     def test_main(self):
         grid_size = 32
