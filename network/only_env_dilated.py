@@ -8,7 +8,7 @@ class OnlyEnvDilated(nn.Module):
     kinematic related information will be directly feed to higher layers
     """
 
-    def __init__(self, feat_in_size=5, feat_out_size=60, regression_hidden_size=32, viz=False):
+    def __init__(self, feat_in_size=5, feat_out_size=60, regression_hidden_size=64, viz=False):
         super(OnlyEnvDilated, self).__init__()
         self.feat_in_size = feat_in_size
         self.viz = viz

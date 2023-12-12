@@ -58,8 +58,8 @@ def visualize(traj, feat, r_var, values, svf_diff_var, step, vis, grid_size, tra
     overlay_map = overlay_traj_to_map(traj_sample, overlay_map)
     vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} height var'.format(mode, step)))
 
-    vis.heatmap(X=feat[0, 3, :, :].float().view(grid_size, -1),
-                opts=dict(colormap='Electric', title='{}, step {} Red Semantic'.format(mode, step)))
+    # vis.heatmap(X=feat[0, 3, :, :].float().view(grid_size, -1),
+    #             opts=dict(colormap='Electric', title='{}, step {} Red Semantic'.format(mode, step)))
     vis.heatmap(X=r_var.data[0].view(grid_size, -1),
                 opts=dict(colormap='Greys', title='{}, step {}, rewards'.format(mode, step)))
     vis.heatmap(X=values[0].reshape(grid_size, -1),

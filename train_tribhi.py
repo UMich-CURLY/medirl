@@ -1,5 +1,5 @@
 import mdp.offroad_grid as offroad_grid
-from loader.single_data_loader import OffroadLoader
+from loader.data_loader_tribhi import OffroadLoader
 from torch.utils.data import DataLoader
 import numpy as np
 
@@ -32,8 +32,8 @@ exp_name = '6.35'
 grid_size = 32
 discount = 0.9
 lr = 5e-3
-n_epoch = 200
-batch_size = 1
+n_epoch = 10
+batch_size = 10
 n_worker = 8
 use_gpu = True
 
