@@ -18,7 +18,7 @@ def overlay_traj_to_map(traj, feat, value1=5.0):
 
 def visualize_batch(traj, feat, r_var, values, svf_diff_var, step, vis, grid_size, train=True):
     mode = 'train' if train else 'test'
-    n_batch = past_traj.shape[0]
+    n_batch = traj.shape[0]
     for i in range(n_batch):
         traj_sample = traj[i].numpy()  # choose one sample from the batch
         traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
@@ -60,6 +60,8 @@ def visualize(traj, feat, r_var, values, svf_diff_var, step, vis, grid_size, tra
 
     # vis.heatmap(X=feat[0, 3, :, :].float().view(grid_size, -1),
     #             opts=dict(colormap='Electric', title='{}, step {} Red Semantic'.format(mode, step)))
+    print("In visualize have svf data ", np.isnan(svf_diff_var.data[0]).all())
+    
     vis.heatmap(X=r_var.data[0].view(grid_size, -1),
                 opts=dict(colormap='Greys', title='{}, step {}, rewards'.format(mode, step)))
     vis.heatmap(X=values[0].reshape(grid_size, -1),
@@ -93,7 +95,6 @@ def pred(feat, traj, net, n_states, model, grid_size):
     feat = feat.float()
     feat_var = Variable(feat)
     r_var = net(feat_var)
-
     result = []
     pool = Pool(processes=n_sample)
     for i in range(n_sample):
