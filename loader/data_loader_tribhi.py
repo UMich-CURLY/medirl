@@ -36,6 +36,8 @@ class OffroadLoader(Dataset):
             image_fol = self.data_dir + '/' + item+"/traj_fixed.npy"
             if not (os.path.exists(image_fol)):
                 continue
+            if (self.check_isnone(self.data_dir + '/' + item)):
+                continue
             self.data_list.append(self.data_dir + '/' + item)
 
 
@@ -45,6 +47,40 @@ class OffroadLoader(Dataset):
         # kinematic related feature
         self.center_idx = self.grid_size / 2
     
+    def check_isnone(self,image_fol):
+        self.image_fol = image_fol
+        goal_sink_feat = np.array(Image.open(self.image_fol+"/goal_sink.png")).T
+        goal_sink_feat = goal_sink_feat/255*np.ones(goal_sink_feat.shape)
+        temp_sink_feat = np.zeros([1,goal_sink_feat.shape[1], goal_sink_feat.shape[2]])
+        for i in range(goal_sink_feat.shape[1]):
+            for j in range(goal_sink_feat.shape[2]):
+                if (goal_sink_feat[1,i,j] == 1):
+                    temp_sink_feat[0,i,j] = 5
+                if (goal_sink_feat[2,i,j] == 1):
+                    temp_sink_feat[0,i,j] = 10
+        goal_sink_feat = temp_sink_feat
+        semantic_img_feat = np.array(Image.open(self.image_fol+"/semantic_img.png"))[:,:,0:3].T
+        with open(self.image_fol+"/traj_fixed.npy", 'rb') as f:
+            traj = np.load(f)
+
+        for i in range(traj.shape[0]):
+            temp = traj[i,0] 
+            traj[i,0]= traj[i,1]
+            traj[i,1] = temp 
+        # visualize rgb
+        # with open(self.image_fol+"/sdf.npy", 'rb') as f:
+        #     sdf_feat = np.load(f)
+        feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 0)
+        # normalize features locally
+
+        for i in range(feat.shape[0]):
+            # print(feat[i].shape)
+            # print("Before nomalize", np.max(feat[i]))  
+            feat[i] = feat[i] - np.mean(feat[i])*np.ones(feat[i].shape)
+            feat[i] = feat[i] / np.std(feat[i])*np.ones(feat[i].shape)
+            if (np.isnan(feat[i]).any()):
+                return True
+        return False
 
     def __getitem__(self, index):
         self.image_fol = self.data_list[index]
@@ -77,11 +113,13 @@ class OffroadLoader(Dataset):
             # print("Before nomalize", np.max(feat[i]))  
             feat[i] = feat[i] - np.mean(feat[i])*np.ones(feat[i].shape)
             feat[i] = feat[i] / np.std(feat[i])*np.ones(feat[i].shape)
+            if (np.isnan(feat[i]).any()):
+                return None, None
             # print("for i mean is std is ", i, np.mean(feat[i]), np.std(feat[i]))
             # print("After normalize min max", np.min(feat[i]), np.max(feat[i]))       
  
     
-
+        traj = self.auto_pad_future(traj[:, :2])
         return feat, traj
 
     def __len__(self):

@@ -31,9 +31,9 @@ class OffroadGrid(object):
     """
 
     def __init__(self, grid_size, discount):
-        # self.actions = ((0, 1), (1, 0), (0, -1), (-1, 0))  # 0->RIGHT, 1->UP, 2->LEFT, 3->DOWN
+        self.actions = ((0, 1), (1, 0), (0, -1), (-1, 0))  # 0->RIGHT, 1->UP, 2->LEFT, 3->DOWN
         # 0->RIGHT, 1->RIGHT-UP, 2->UP, 3->LEFT-UP, 4->LEFT, 5->LEFT-DOWN, 6->DOWN, 7-RIGHT-DOWN
-        self.actions = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1))
+        # self.actions = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1))
         self.n_actions = len(self.actions)
         self.n_states = grid_size ** 2
         self.grid_size = grid_size
@@ -447,7 +447,7 @@ class OffroadGrid(object):
 
             state = self.xy_to_idx((demo_traj[i, 0], demo_traj[i, 1]))
             prob *= policy[state, action]
-            print("Policy action pait is", policy[state,action])
+            # print("Policy action pait is", policy[state,action])
         print("Prob is ", prob)
         try:
             nll = -math.log(prob) / demo_traj.shape[0]

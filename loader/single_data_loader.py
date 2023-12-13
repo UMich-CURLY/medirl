@@ -18,7 +18,7 @@ import math
 
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data/', pre_train=False, tangent=False,
                  more_kinematic=None):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size

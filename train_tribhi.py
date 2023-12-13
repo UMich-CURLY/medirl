@@ -16,24 +16,24 @@ from network.one_stage_dilated import OneStageDilated
 from network.only_env_dilated import OnlyEnvDilated
 import torch
 import time
-from maxent_irl_social import pred, rl, overlay_traj_to_map, visualize
-
+from maxent_irl_social import pred, rl, overlay_traj_to_map, visualize, visualize_batch
+from IPython import embed
 logging.basicConfig(filename='maxent_irl_social.log', format='%(levelname)s. %(asctime)s. %(message)s',
                     level=logging.DEBUG)
 
 """ init param """
 #pre_train_weight = 'pre-train-v6-dilated/step1580-loss0.0022763446904718876.pth'
 pre_train_weight = None
-vis_per_steps = 20
-test_per_steps = 5
+vis_per_steps = 10
+test_per_steps = 2
 # resume = "step280-loss0.5675923794730127.pth"
 resume = None
-exp_name = '6.35'
+exp_name = '6.33'
 grid_size = 32
 discount = 0.9
 lr = 5e-3
-n_epoch = 10
-batch_size = 10
+n_epoch = 64
+batch_size = 16
 n_worker = 8
 use_gpu = True
 
@@ -41,7 +41,7 @@ if not os.path.exists(os.path.join('exp', exp_name)):
     os.makedirs(os.path.join('exp', exp_name))
 
 host = os.environ['HOSTNAME']
-vis = visdom.Visdom(env='v{}-{}'.format(exp_name, host), server='http://127.0.0.1', port=8099)
+vis = visdom.Visdom(env='v{}-{}'.format(exp_name, host), server='http://127.0.0.1', port=8098)
 # vis = visdom.Visdom(env='main')
 
 model = offroad_grid.OffroadGrid(grid_size, discount)
@@ -53,7 +53,7 @@ train_loader = DataLoader(train_loader, num_workers=n_worker, batch_size=batch_s
 test_loader = OffroadLoader(grid_size=grid_size, train=False, tangent=False)
 test_loader = DataLoader(test_loader, num_workers=n_worker, batch_size=batch_size, shuffle=True)
 
-net = OnlyEnvDilated(feat_in_size = 2, feat_out_size = 10)
+net = OnlyEnvDilated(feat_in_size = 4, feat_out_size = 50)
 #net = OneStageDilated(feat_out_size=25)
 step = 0
 nll_cma = 0
@@ -87,15 +87,19 @@ for epoch in range(n_epoch):
         net.train()
         print('main. step {}'.format(step))
         nll_list, r_var, svf_diff_var, values_list = pred(feat, traj, net, n_states, model, grid_size)
-
+        
         opt.zero_grad()
+        # embed()
         # a hack to enable backprop in pytorch with a vector
         # the normally used loss.backward() only works when loss is a scalar
-        torch.autograd.backward([r_var], [-svf_diff_var])  # to maximize, hence add minus sign
+        if not (np.isnan(values_list[0]).all().item()):
+            torch.autograd.backward([r_var], [-svf_diff_var])  # to maximize, hence add minus sign
+        else:
+            embed()
         opt.step()
         nll = sum(nll_list) / len(nll_list)
         print('main. acc {}. took {} s'.format(nll, time.time() - start))
-
+        print("Att epoch ", epoch)
         # cma. cumulative moving average. window size < 20
         nll_cma = (nll + nll_cma * min(step, 20)) / (min(step, 20) + 1)
         vis.line(X=np.array([[step, step]]), Y=np.array([[nll, nll_cma]]), win=train_nll_win, update='append')
