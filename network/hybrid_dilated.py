@@ -31,7 +31,7 @@ class HybridDilated(nn.Module):
             nn.ReLU(inplace=True),
         )
         self.regression_block = nn.Sequential(
-            nn.Conv2d(feat_out_size + 5, regression_hidden_size, 1),
+            nn.Conv2d(feat_out_size + 2, regression_hidden_size, 1),
             nn.ReLU(inplace=True),
             nn.Conv2d(regression_hidden_size, regression_hidden_size, 1),
             nn.ReLU(inplace=True),
@@ -45,7 +45,7 @@ class HybridDilated(nn.Module):
         feat_in = x[:, :self.feat_in_size, :, :]
         feat_out = self.feat_block(feat_in)
 
-        kinematic_in = torch.cat((feat_out, x[:, 5:, :, :]), dim=1)
+        kinematic_in = torch.cat((feat_out, x[:, self.feat_in_size:, :, :]), dim=1)
         out = self.regression_block(kinematic_in)
 
         if self.viz:

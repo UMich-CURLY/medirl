@@ -19,7 +19,7 @@ import math
 
 class OffroadLoader(Dataset):
     def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data/irl_data_dec_11_rl_agent', pre_train=False, tangent=False,
-                 more_kinematic=None):
+                 more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
         # if train:

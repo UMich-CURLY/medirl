@@ -31,7 +31,7 @@ class OffroadGrid(object):
     """
 
     def __init__(self, grid_size, discount):
-        self.actions = ((0, 1), (1, 0), (0, -1), (-1, 0))  # 0->RIGHT, 1->UP, 2->LEFT, 3->DOWN
+        self.actions = ((0, 1), (1, 0), (0, -1), (-1, 0), (0, 0))  # 0->RIGHT, 1->UP, 2->LEFT, 3->DOWN
         # 0->RIGHT, 1->RIGHT-UP, 2->UP, 3->LEFT-UP, 4->LEFT, 5->LEFT-DOWN, 6->DOWN, 7-RIGHT-DOWN
         # self.actions = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1))
         self.n_actions = len(self.actions)
@@ -475,7 +475,7 @@ class OffroadGrid(object):
         :param i:
         :return:
         """
-        return i // self.grid_size, i % self.grid_size
+        return [i // self.grid_size, i % self.grid_size]
 
     def xy_to_idx(self, p):
         """
