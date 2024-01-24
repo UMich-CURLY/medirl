@@ -4,13 +4,13 @@ from .unet_parts import *
 
 
 class RewardNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear=True, n_states=6, grid_size=80, feat_out_size=25, regression_hidden_size=64):
+    def __init__(self, n_channels, n_classes, bilinear=True, n_states=32, grid_size=80, feat_out_size=25, regression_hidden_size=64, n_kin = 2):
         super(RewardNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
         self.n_states = n_states
-
+        self.n_kin= n_kin
         scale = 1
         self.inc = DoubleConv(n_channels, 64 // scale)
         self.down1 = Down(64 // scale, 128 // scale)
@@ -69,7 +69,7 @@ class RewardNet(nn.Module):
         self.upsample = nn.Upsample((grid_size, grid_size))
         
         self.regression_block = nn.Sequential(
-            nn.Conv2d(feat_out_size + 2, regression_hidden_size, 1),
+            nn.Conv2d(feat_out_size + n_kin, regression_hidden_size, 1),
             nn.ReLU(inplace=True),
             nn.Conv2d(regression_hidden_size, regression_hidden_size, 1),
             nn.ReLU(inplace=True),
@@ -79,8 +79,8 @@ class RewardNet(nn.Module):
         )
     
 
-    def forward(self, x, state_x):
-        kinematic_in = x[:, self.n_channels:self.n_channels+2, :, :]
+    def forward(self, x):
+        kinematic_in = x[:, self.n_channels:, :, :]
         
         # geometric and semantic feature extraction
         x = x[:, :self.n_channels, :, :]
@@ -96,17 +96,19 @@ class RewardNet(nn.Module):
         #out = self.outc(x)
 
         # robot state feature extraction
-        state_x = state_x[:, :, :self.n_states]
-        state_x = state_x.permute(0, 2, 1)
-        state_x = self.block1(state_x)
-        state_x = self.block2(state_x)
+        # state_x = x[:, self.n_channels:, :, :]
+        # # state_x = state_x.permute(0, 2, 1)
+        # state_x = self.block1(state_x)
+        # state_x = self.block2(state_x)
 
         # feature fusing
         x = torch.cat((x, kinematic_in), dim=1)
-        for i in range(self.n_states):
-            fc_out = self.fc[str(i)](state_x[:,i,:].view(state_x.shape[0], -1))
-            fc_out = self.upsample(torch.unsqueeze(torch.unsqueeze(fc_out, 2), 3))
-            x = torch.cat((x, fc_out), dim=1)
+        # for i in range(self.n_states):
+        #     fc_out = self.fc[str(i)](state_x[:,i,:].view(state_x.shape[0], -1))
+        #     fc_out = self.upsample(torch.unsqueeze(torch.unsqueeze(fc_out, 2), 3))
+        #     x = torch.cat((x, fc_out), dim=1)
         out = self.regression_block(x)
         
         return out
+    
+    

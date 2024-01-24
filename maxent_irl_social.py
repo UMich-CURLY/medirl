@@ -40,10 +40,12 @@ def visualize_batch(past_traj, traj, feat, r_var, values, svf_diff_var, step, vi
             policy_sample = policy_sample.astype(np.int64)
             overlay_map = overlay_traj_to_map(policy_sample, overlay_map)
         vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} semantic with learned traj'.format(mode, step)))
-        vis.heatmap(X=feat[i, 4, :, :].float().view(grid_size, -1),
-                    opts=dict(colormap='Electric', title='{}, Traj {} self'.format(mode, step)))
-        vis.heatmap(X=feat[i, 5, :, :].float().view(grid_size, -1),
-                    opts=dict(colormap='Electric', title='{}, Traj {} other'.format(mode, step)))
+        if (feat.shape[1] >4):
+            vis.heatmap(X=feat[i, 4, :, :].float().view(grid_size, -1),
+                        opts=dict(colormap='Electric', title='{}, Traj {} self'.format(mode, step)))
+        if (feat.shape[1] >5):
+            vis.heatmap(X=feat[i, 5, :, :].float().view(grid_size, -1),
+                        opts=dict(colormap='Electric', title='{}, Traj {} other'.format(mode, step)))
 
         # vis.heatmap(X=feat[0, 3, :, :].float().view(grid_size, -1),
         #             opts=dict(colormap='Electric', title='{}, step {} Red Semantic'.format(mode, step)))

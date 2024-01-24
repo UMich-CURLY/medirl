@@ -40,15 +40,15 @@ def is_valid_traj(traj):
     return True
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data/irl_driving_inter3_junwoo', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data/irl_jan_12', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
-        if train:
-            self.data_dir = datadir + '/train'
-        else:
-            self.data_dir = datadir + '/test'
-        print(self.data_dir)
+        # if train:
+        #     self.data_dir = datadir + '/train'
+        # else:
+        #     self.data_dir = datadir + '/test'
+        # print(self.data_dir)
         # if not train:
         #     self.data_dir = '/root/medirl/data/irl_driving_full_future'
         # if demo is not None:
@@ -174,7 +174,7 @@ class OffroadLoader(Dataset):
         
         other_traj_feature[0,list(np.array(past_other_traj[:,0], np.int)), list(np.array(past_other_traj[:,1], np.int))] = 100
         kin_feats = np.concatenate((self_traj_feature, other_traj_feature), axis = 0)
-        feat = np.concatenate((feat, kin_feats), axis = 0)
+        # feat = np.concatenate((feat, kin_feats), axis = 0)
         # normalize features locally
 
         for i in range(feat.shape[0]):

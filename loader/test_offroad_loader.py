@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from loader.offroad_loader import *
 import unittest
 import visdom
 import numpy as np
-
+import sys
 np.set_printoptions(threshold=np.inf)
 import logging
 import torch
 
+print(sys.path)
+sys.path.append('/root/medirl')
+from loader.data_loader_static import OffroadLoader
 
 def overlay_traj_to_map(traj_idx, feat_map, value):
     overlay_map = copy.deepcopy(feat_map)
