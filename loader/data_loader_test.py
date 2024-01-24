@@ -39,11 +39,21 @@ def is_valid_traj(traj):
         i = i+1
     return True
 
+def get_traj_length_unique(traj):
+    lengths = []
+    traj_list = []
+    for j in range(len(traj)):
+        if list(traj[j]) not in traj_list:
+            traj_list.append([traj[j][0], traj[j][1]])
+    lengths.append(len(traj_list))
+    return np.array(lengths), traj_list
+
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data/irl_jan_12', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data/test_irl', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
+        self.data_dir = datadir
         # if train:
         #     self.data_dir = datadir + '/train'
         # else:
@@ -55,70 +65,38 @@ class OffroadLoader(Dataset):
         #     self.data_dir = datadir + '/irl_data/' + demo
         items = os.listdir(self.data_dir)
         self.data_list = []
+        # remove_list = ['demo_5', 'demo_6']
         for item in items:
-            past_traj = self.data_dir + '/' + item+"/past_traj.npy"
-            if not (os.path.exists(past_traj)):
-                continue
-            if (self.check_isnone(self.data_dir + '/' + item)):
-                continue
-            future_traj = self.data_dir + '/' + item+"/future_traj.npy"
-            if not (os.path.exists(future_traj)):
-                continue
-            if (self.check_isnone(self.data_dir + '/' + item)):
-                continue
+            # past_traj = self.data_dir + '/' + item+"/robot_traj_fixed.npy"
+            # if item in remove_list:
+            #     continue
+            # if not (os.path.exists(past_traj)):
+            #     continue
+            # if (self.check_isnone(self.data_dir + '/' + item)):
+            #     continue
+            # future_traj = self.data_dir + '/' + item+"/human_traj_fixed.npy"
+            # if not (os.path.exists(future_traj)):
+            #     continue
+            # if (self.check_isnone(self.data_dir + '/' + item)):
+            #     continue
             self.data_list.append(self.data_dir + '/' + item)
 
-
+        print(self.data_list)
         #self.data_normalization = sio.loadmat(datadir + '/irl_data/train-data-mean-std.mat')
         self.pre_train = pre_train
 
         # kinematic related feature
         self.center_idx = self.grid_size / 2
-        self.is_human = human
     
-    def check_isnone(self,image_fol):
-        self.image_fol = image_fol
-        goal_sink_feat = np.array(Image.open(self.image_fol+"/goal_sink.png")).T
-        goal_sink_feat = goal_sink_feat/255*np.ones(goal_sink_feat.shape)
-        temp_sink_feat = np.zeros([1,goal_sink_feat.shape[1], goal_sink_feat.shape[2]])
-        for i in range(goal_sink_feat.shape[1]):
-            for j in range(goal_sink_feat.shape[2]):
-                if (goal_sink_feat[1,i,j] == 1):
-                    temp_sink_feat[0,i,j] = 5
-                if (goal_sink_feat[2,i,j] == 1):
-                    temp_sink_feat[0,i,j] = 10
-        goal_sink_feat = temp_sink_feat
-        semantic_img_feat = np.array(Image.open(self.image_fol+"/semantic_img.png"))[:,:,0:3].T
-        with open(self.image_fol+"/traj_fixed.npy", 'rb') as f:
-            traj = np.load(f)
-            if (len(traj) == 0):
-                return True
 
-        for i in range(traj.shape[0]):
-            temp = traj[i,0] 
-            traj[i,0]= traj[i,1]
-            traj[i,1] = temp 
-        # visualize rgb
-        # with open(self.image_fol+"/sdf.npy", 'rb') as f:
-        #     sdf_feat = np.load(f)
-        feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 0)
-        # normalize features locally
 
-        for i in range(feat.shape[0]):
-            # print(feat[i].shape)
-            # print("Before nomalize", np.max(feat[i]))  
-            feat[i] = feat[i] - np.mean(feat[i])*np.ones(feat[i].shape)
-            feat[i] = feat[i] / np.std(feat[i])*np.ones(feat[i].shape)
-            if (np.isnan(feat[i]).any()):
-                return True
-        return False
-    
     
 
 
 
     def __getitem__(self, index):
         self.image_fol = self.data_list[index]
+        print(self.image_fol)
         goal_sink_feat = np.array(Image.open(self.image_fol+"/goal_sink.png")).T
         goal_sink_feat = goal_sink_feat/255*np.ones(goal_sink_feat.shape)
         temp_sink_feat = np.zeros([1,goal_sink_feat.shape[1], goal_sink_feat.shape[2]])
@@ -130,51 +108,24 @@ class OffroadLoader(Dataset):
                     temp_sink_feat[0,i,j] = 10
         goal_sink_feat = temp_sink_feat
         semantic_img_feat = np.array(Image.open(self.image_fol+"/semantic_img.png"))[:,:,0:3].T
-        with open(self.image_fol+"/past_traj.npy", 'rb') as f:
-            full_traj = np.load(f)
-            past_full_traj = full_traj
-        past_other_traj = []
-        if self.is_human:
-            past_traj = full_traj[:,:,1]
-            past_other_traj = full_traj[:,:,0]
-        else:
-            past_traj = full_traj[:,:,0]
-            past_other_traj = full_traj[:,:,1]
-        past_traj = transpose_traj(past_traj)
-        past_other_traj = transpose_traj(past_other_traj)
-        if not is_valid_traj(past_traj) or not is_valid_traj(past_other_traj):
-            print("Bad past traj in ", self.image_fol)
-            # embed()
-        with open(self.image_fol+"/future_traj.npy", 'rb') as f:
-            full_traj = np.load(f)
-        # if len(full_traj) == 0:
-        #     with open(self.image_fol+"/traj_fixed.npy", 'rb') as f:
-        #         full_traj = np.load(f)
-        future_other_traj = []
-        if self.is_human:
-            future_traj = full_traj[:,:,1]
-            future_other_traj = full_traj[:,:,0]
-        else:
-            future_traj = full_traj[:,:,0]
-            future_other_traj = full_traj[:,:,1]
-        future_traj = transpose_traj(future_traj)
-        future_other_traj = transpose_traj(future_other_traj)
-        if not is_valid_traj(future_traj) or not is_valid_traj(future_other_traj):
-            print("Bad future traj in ", self.image_fol)
-            # embed()
         
-        # visualize rgb
-        # with open(self.image_fol+"/sdf.npy", 'rb') as f:
-        #     sdf_feat = np.load(f)
+        
+        robot_traj = np.array([[16,16]])
+        
+        human_past_traj = np.array([[16,16]])
+        
+        human_future_traj = [[16,16]]
+        
         feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 0)
         ### Add the traj features 
-        self_traj_feature = np.zeros(goal_sink_feat.shape)
-        self_traj_feature[0,list(np.array(past_traj[:,0], np.int)), list(np.array(past_traj[:,1], np.int))] = 100
-        other_traj_feature = np.zeros(goal_sink_feat.shape)
+        human_traj_feature = np.zeros(goal_sink_feat.shape)
+        # human_traj_feature[0,list(np.array(human_past_traj[:,0], np.int)), list(np.array(human_past_traj[:,1], np.int))] = 100
+        human_traj_feature[0,16, 16] = 100
+        # other_traj_feature = np.zeros(goal_sink_feat.shape)
         
-        other_traj_feature[0,list(np.array(past_other_traj[:,0], np.int)), list(np.array(past_other_traj[:,1], np.int))] = 100
-        kin_feats = np.concatenate((self_traj_feature, other_traj_feature), axis = 0)
-        # feat = np.concatenate((feat, kin_feats), axis = 0)
+        # other_traj_feature[0,list(np.array(past_other_traj[:,0], np.int)), list(np.array(past_other_traj[:,1], np.int))] = 100
+        # kin_feats = np.concatenate((self_traj_feature, ther_traj_feature), axis = 0)
+        feat = np.concatenate((feat, human_traj_feature), axis = 0)
         # normalize features locally
 
         for i in range(feat.shape[0]):
@@ -190,12 +141,11 @@ class OffroadLoader(Dataset):
             # print("for i mean is std is ", i, np.mean(feat[i]), np.std(feat[i]))
             # print("After normalize min max", np.min(feat[i]), np.max(feat[i]))       
  
-    
-        past_traj = self.auto_pad_past(past_traj[:, :2])
-        future_traj = self.auto_pad_future(future_traj[:, :2])
-        past_other_traj = self.auto_pad_past(past_other_traj[:, :2])
-        future_other_traj = self.auto_pad_future(future_other_traj[:, :2])
-        return feat, past_traj, future_traj, past_other_traj, future_other_traj
+        
+        robot_traj = self.auto_pad_future(robot_traj[:, :2])
+        human_past_traj = self.auto_pad_past(human_past_traj[:, :2])
+        # future_other_traj = self.auto_pad_future(future_other_traj[:, :2])
+        return feat, robot_traj, human_past_traj
 
     def __len__(self):
         return len(self.data_list)
@@ -212,7 +162,7 @@ class OffroadLoader(Dataset):
             traj = traj[traj.shape[0]-self.grid_size:, :]
             #raise ValueError('traj length {} must be less than grid_size {}'.format(traj.shape[0], self.grid_size))
         pad_len = self.grid_size - traj.shape[0]
-        pad_array = np.full((pad_len, 2), np.nan)
+        pad_array = np.full((pad_len, 2), traj[0])
         output = np.vstack((traj, pad_array))
         return output
 
@@ -228,6 +178,6 @@ class OffroadLoader(Dataset):
             traj = traj[:self.grid_size, :]
             #raise ValueError('traj length {} must be less than grid_size {}'.format(traj.shape[0], self.grid_size))
         pad_len = self.grid_size - traj.shape[0]
-        pad_array = np.full((pad_len, 2), np.nan)
+        pad_array = np.full((pad_len, 2), traj[-1])
         output = np.vstack((traj, pad_array))
         return output

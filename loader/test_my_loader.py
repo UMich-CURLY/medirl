@@ -29,7 +29,7 @@ class TestOffroadLoader(unittest.TestCase):
     def test_dataset(self):
         grid_size = 60
         n_traj = 20
-        loader = OffroadLoader(grid_size=grid_size, n_traj=n_traj)
+        loader = OffroadLoader(grid_size=grid_size, tangent=False)
         for idx in range(50):
             feat, past_traj, future_traj = loader[0]  # the index does not matter. random sample inside loader
             # self.vis.heatmap(X=feat[0], opts=dict(colormap='Electric', title='height_max. idx {}'.format(idx)))
@@ -45,7 +45,7 @@ class TestOffroadLoader(unittest.TestCase):
     def test_loader(self):
         grid_size = 60
         n_traj = 10
-        loader = OffroadLoader(grid_size=grid_size, n_traj=n_traj, train=False)
+        loader = OffroadLoader(grid_size=grid_size, train=False)
         loader = DataLoader(loader, num_workers=1, batch_size=1, shuffle=True)
         for idx, (feat, past_traj, future_traj) in enumerate(loader):
             feat = torch.squeeze(feat,dim=0)
