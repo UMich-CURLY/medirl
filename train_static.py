@@ -92,7 +92,7 @@ vis_per_steps = 20
 test_per_steps = 20
 # resume = "step280-loss0.5675923794730127.pth"
 resume = None
-exp_name = '6.02'
+exp_name = '6.03'
 grid_size = 32
 discount = 0.9
 lr = 5e-4
@@ -253,9 +253,9 @@ for epoch in range(n_epoch):
             print("Sampled Traj is ", sampled_trajs_r)
             if nll_test_robot < best_test_nll_robot:
                 best_test_nll_robot = nll_test_robot
-                state = {'nll_cma': nll_cma_robot, 'test_nll': nll_test_robot, 'step': step, 'net_state': net_robot.state_dict(),
-                         'opt_state': opt_robot.state_dict(), 'discount':discount}
-                path = os.path.join('exp', exp_name+"robot", 'step{}-loss{}.pth'.format(step, nll_test_robot))
-                torch.save(state, path)
+            state = {'nll_cma': nll_cma_robot, 'test_nll': nll_test_robot, 'step': step, 'net_state': net_robot.state_dict(),
+                        'opt_state': opt_robot.state_dict(), 'discount':discount}
+            path = os.path.join('exp', exp_name+"robot", 'step{}-loss{}.pth'.format(step, nll_test_robot))
+            torch.save(state, path)
 
         step += 1

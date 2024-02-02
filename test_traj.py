@@ -29,13 +29,20 @@ torch.set_default_tensor_type('torch.DoubleTensor')
 
 
 resume = None
-exp_name = '6.02robot'
+exp_name = '6.03robot'
 grid_size = 32
 
-resume = 'step60-loss0.8396778247152197.pth'
+resume = 'step120-loss1.6708339589222967.pth'
 
 # host = os.environ['HOSTNAME']
 # vis = visdom.Visdom(env='v{}-{}'.format(exp_name, host), server='http://127.0.0.1', port=8098)
+
+def transpose_traj(traj):
+    for i in range(traj.shape[0]):
+        temp = traj[i,0] 
+        traj[i,0]= traj[i,1]
+        traj[i,1] = temp 
+    return traj
 
 def get_traj_feature(goal_sink_feat, grid_size, past_traj, future_traj = None):
     feat = np.zeros(goal_sink_feat.shape)
@@ -49,7 +56,7 @@ def get_traj_feature(goal_sink_feat, grid_size, past_traj, future_traj = None):
             [x,y] = past_traj[i][index]
             if np.isnan([x,y]).any():
                 continue
-            feat[i,int(x),int(y)] = val
+            feat[i,int(x),int(y)] = 6
             index = index+1
         if future_traj is not None:
             index = 0
@@ -124,18 +131,20 @@ class irl():
             return False
         for step, (feat, robot_traj, human_traj) in enumerate(self.loader):
             start = time.time()
-            feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, [self.human_traj])
+            human_traj = transpose_traj(np.array(self.human_traj))
+            feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, [human_traj])
             feat_var = Variable(feat)
             r_var = self.net(feat)
             r_sample = r_var[0].data.numpy().squeeze().reshape(self.n_states)
             values_sample = self.model.find_optimal_value(r_sample, 0.1)
             policy = self.model.find_stochastic_policy(values_sample, r_sample)
             ### Can change to sampling longer trajectories
-            sampled_traj = self.model.traj_sample(policy, grid_size, self.robot_traj[0][0], self.robot_traj[0][1])
+            sampled_traj = self.model.traj_sample(policy, grid_size, self.robot_traj[0][1], self.robot_traj[0][0])
             # nll_list, r_var, svf_diff_var, values_list, sampled_trajs_r, zeroing_loss_r = pred(feat, self.robot_traj, net, n_states, model, grid_size)
             # test_nll_list += nll_list
             # visualize_batch(self.robot_traj, [sampled_traj], feat, r_var, [values_sample], np.zeros([32,32]), step, vis, grid_size, train=False)
-        traj = sampled_traj
+        traj = transpose_traj(np.array(sampled_traj))
+        # traj = self.human_traj
         msg = Int32MultiArray()
         layout = MultiArrayLayout()
         dim0 = MultiArrayDimension()
@@ -155,6 +164,9 @@ class irl():
         msg.data = np.ndarray.tolist(data[0])
         self._pub_traj.publish(msg)
         print(sampled_traj)
+        rospy.sleep(5.0)
+        # visualize_batch(np.array([self.robot_traj[0]]), None, feat, r_var, [values_sample], None , step, vis, grid_size, train=False, policy_sample_list=[sampled_traj])
+
 
     def people_callback(self, data):
         length = data.layout.dim[0].size
@@ -169,5 +181,5 @@ if __name__ == "__main__":
         feature = irl()
         update = 0
         while(not rospy.is_shutdown()):
-            rospy.sleep(0.01)
+            rospy.sleep(5.0)
             
