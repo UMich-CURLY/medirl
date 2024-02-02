@@ -18,19 +18,20 @@ def overlay_traj_to_map(traj, feat, value1=5.0):
 
 def visualize_batch(past_traj, traj, feat, r_var, values, svf_diff_var, step, vis, grid_size, train=True, policy_sample_list = None):
     mode = 'train' if train else 'test'
-    n_batch = traj.shape[0]
+    # n_batch = traj.shape[0]
+    n_batch = 1
     for i in range(n_batch):
-        traj_sample = traj[i].numpy()  # choose one sample from the batch
-        traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
-        traj_sample = traj_sample.astype(np.int64)
+        # traj_sample = traj[i].numpy()  # choose one sample from the batch
+        # traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
+        # traj_sample = traj_sample.astype(np.int64)
 
         vis.heatmap(X=feat[i, 0, :, :].float().view(grid_size, -1),
                 opts=dict(colormap='Electric', title='{}, step {} Goal Sink'.format(mode, step)))
 
         overlay_map = feat[i, 1, :, :].float().view(grid_size, -1).numpy()  # (grid_size, grid_size)
-        overlay_map = overlay_traj_to_map(traj_sample, overlay_map)
+        # overlay_map = overlay_traj_to_map(traj_sample, overlay_map)
         
-        vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} semantic with traj self'.format(mode, step)))
+        # vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} semantic with traj self'.format(mode, step)))
 
         overlay_map = feat[i, 3, :, :].float().view(grid_size, -1).numpy()
         if policy_sample_list is not None:
@@ -54,8 +55,9 @@ def visualize_batch(past_traj, traj, feat, r_var, values, svf_diff_var, step, vi
                     opts=dict(colormap='Greys', title='{}, step {}, rewards'.format(mode, step)))
         vis.heatmap(X=values[i].reshape(grid_size, -1),
                     opts=dict(colormap='Greys', title='{}, step {}, value'.format(mode, step)))
-        vis.heatmap(X=svf_diff_var.data[i].view(grid_size, -1),
-                    opts=dict(colormap='Greys', title='{}, step {}, SVF_diff'.format(mode, step)))
+        if svf_diff_var is not None:
+            vis.heatmap(X=svf_diff_var.data[i].view(grid_size, -1),
+                        opts=dict(colormap='Greys', title='{}, step {}, SVF_diff'.format(mode, step)))
 
 
 def visualize(past_traj, future_traj, feat, r_var, values, svf_diff_var, step, vis, grid_size, train=True, policy_sample_list = None):

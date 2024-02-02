@@ -20,7 +20,7 @@ exp_name = '6.02robot'
 grid_size = 32
 
 discount = 0.9
-batch_size = 2
+batch_size = 3
 n_worker = 2
 #exp = '6.24'
 #resume = 'step700-loss0.6980162681374217.pth'
