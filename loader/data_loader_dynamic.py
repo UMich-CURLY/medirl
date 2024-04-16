@@ -40,7 +40,7 @@ def is_valid_traj(traj):
     return True
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data/irl_jan_12', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data/irl_feb_6', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size

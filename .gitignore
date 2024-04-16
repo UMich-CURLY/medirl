@@ -4,3 +4,6 @@
 __pycache__/
 data/
 exp/
+.ros/
+.python_history
+.visdom
