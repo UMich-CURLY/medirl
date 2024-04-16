@@ -96,9 +96,9 @@ exp_name = '6.03'
 grid_size = 32
 discount = 0.9
 lr = 5e-4
-n_epoch = 64
-batch_size = 8
-n_worker = 8
+n_epoch = 128
+batch_size = 2
+n_worker = 2
 use_gpu = True
 
 

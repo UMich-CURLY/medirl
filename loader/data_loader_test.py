@@ -49,7 +49,7 @@ def get_traj_length_unique(traj):
     return np.array(lengths), traj_list
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='/root/medirl/data/test_irl', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='data/test_irl', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
