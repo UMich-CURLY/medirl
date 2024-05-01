@@ -39,7 +39,6 @@ def get_traj_feature(goal_sink_feat, grid_size, past_traj, future_traj = None):
         max_val = np.max(goal_sink_feat_array)
         mean_val = min_val+max_val/2
         index = 0
-        
         for val in np.linspace(6, 5, past_lengths[i]):
             [x,y] = past_traj[i][index]
             if np.isnan([x,y]).any():
@@ -70,6 +69,7 @@ def get_traj_length_unique(traj):
     traj_list_full = []
     for i in range(len(traj)):
         traj_sample = traj[i].numpy()  # choose one sample from the batch
+        traj_sample = traj_sample.T
         traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
         traj_list = []
         for j in range(len(traj_sample)):
@@ -92,12 +92,12 @@ vis_per_steps = 20
 test_per_steps = 20
 # resume = "step280-loss0.5675923794730127.pth"
 resume = None
-exp_name = '6.03'
-grid_size = 32
+exp_name = '6.07'
+grid_size = 60
 discount = 0.9
 lr = 5e-4
 n_epoch = 128
-batch_size = 2
+batch_size = 8
 n_worker = 2
 use_gpu = True
 
@@ -124,7 +124,7 @@ test_loader_robot = DataLoader(test_loader_robot, num_workers=n_worker, batch_si
 
 # net_robot = HybridDilated(feat_in_size = 4, feat_out_size = 50)
 # net_robot = OnlyEnvDilated(feat_in_size = 4, feat_out_size = 50)
-net_robot = RewardNet(n_channels=5, n_classes=1, n_kin = 0)
+net_robot = RewardNet(n_channels=4, n_classes=1, n_kin = 0)
 
 
 
@@ -182,7 +182,7 @@ prev_predicted_traj_human = np.empty([total_demos, grid_size, 2])*np.nan
 
 for epoch in range(n_epoch):
     batch_iter = []
-    for index, (feat, robot_traj, human_traj) in enumerate(train_loader_robot):
+    for index, (feat, robot_traj, human_past_traj, robot_past_traj) in enumerate(train_loader_robot):
         print("outside loop")
         start = time.time()
         net_robot.train()
@@ -191,12 +191,16 @@ for epoch in range(n_epoch):
         start_full_index = batch_size*index
         end_full_index = batch_size*index+batch_iter[-1]
         print("Index is!!!! ", start_full_index, end_full_index)
+        print("Shape of feat is", feat.shape)
         ### Initialize the traj feature with just the past trajectory
         # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, past_traj_r)
         # if not np.isnan(prev_predicted_traj_human[start_full_index:end_full_index].all()):
         #     if not np.isnan(prev_past_traj_human[start_full_index:end_full_index]).all():
         #         feat_r[:,5,:] = get_traj_feature(feat_r[:,0], grid_size, prev_past_traj_human[start_full_index:end_full_index], prev_predicted_traj_human[start_full_index:end_full_index])
-        feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, human_traj)
+        feat_test = feat[:,3,:].numpy()
+        feat[:,3,:] = get_traj_feature(feat[:,0], grid_size, human_past_traj)
+        # print(feat_test)
+        # feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, robot_past_traj)
         nll_list_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, zeroing_loss_r = pred(feat, robot_traj, net_robot, n_states, model_robot, grid_size)
         # prev_past_traj_robot[start_full_index:end_full_index] = past_traj_r
         # prev_predicted_traj_robot[start_full_index:end_full_index] = auto_pad_future(grid_size, np.array(sampled_trajs_r))
@@ -232,12 +236,13 @@ for epoch in range(n_epoch):
             net_robot.eval()
             nll_test_list_human = []
             nll_test_list_robot = []
-            for test_index, (feat_r, robot_traj, human_traj) in enumerate(test_loader_robot):
+            for test_index, (feat_r, robot_traj, human_past_traj, robot_past_traj) in enumerate(test_loader_robot):
                 # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, past_traj_r)
                 # if not np.isnan(prev_predicted_traj_human[start_full_index:end_full_index].all()):
                 #     if not np.isnan(prev_past_traj_human[start_full_index:end_full_index]).all():
                 #         feat_r[:,5,:] = get_traj_feature(feat_r[:,0], grid_size, prev_past_traj_human[start_full_index:end_full_index], prev_predicted_traj_human[start_full_index:end_full_index])
-                feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, human_traj)
+                feat_r[:,3,:] = get_traj_feature(feat_r[:,0], grid_size, human_past_traj)
+                # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, robot_past_traj)
                 # feat_h[:,4,:] = get_traj_feature(feat_h[:,0], grid_size, past_traj_h)
                 # if not np.isnan(prev_predicted_traj_robot[start_full_index:end_full_index]).all():
                 #     if not np.isnan(prev_past_traj_robot[start_full_index:end_full_index]).all():
@@ -249,8 +254,8 @@ for epoch in range(n_epoch):
             print('main. test nll {}'.format(nll_test_robot))
             vis2.line(X=np.array([step]), Y=np.array([nll_test_robot]), win=test_nll_win_robot, update='append')
             visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, svf_diff_var_r, step, vis2, grid_size, train=False, policy_sample_list=sampled_trajs_r)
-            print("Robot Traj is ", robot_traj)
-            print("Sampled Traj is ", sampled_trajs_r)
+            # print("Robot Traj is ", robot_traj)
+            # print("Sampled Traj is ", sampled_trajs_r)
             if nll_test_robot < best_test_nll_robot:
                 best_test_nll_robot = nll_test_robot
             state = {'nll_cma': nll_cma_robot, 'test_nll': nll_test_robot, 'step': step, 'net_state': net_robot.state_dict(),

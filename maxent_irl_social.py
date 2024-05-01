@@ -18,34 +18,34 @@ def overlay_traj_to_map(traj, feat, value1=5.0):
 
 def visualize_batch(past_traj, traj, feat, r_var, values, svf_diff_var, step, vis, grid_size, train=True, policy_sample_list = None):
     mode = 'train' if train else 'test'
-    # n_batch = traj.shape[0]
-    n_batch = 1
+    n_batch = traj.shape[0]
+    # n_batch = 1
     for i in range(n_batch):
         # traj_sample = traj[i].numpy()  # choose one sample from the batch
         # traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
         # traj_sample = traj_sample.astype(np.int64)
 
-        vis.heatmap(X=feat[i, 0, :, :].float().view(grid_size, -1),
-                opts=dict(colormap='Electric', title='{}, step {} Goal Sink'.format(mode, step)))
+        # vis.heatmap(X=feat[i, 0, :, :].float().view(grid_size, -1),
+                # opts=dict(colormap='Electric', title='{}, step {} RBG'.format(mode, step)))
 
         overlay_map = feat[i, 1, :, :].float().view(grid_size, -1).numpy()  # (grid_size, grid_size)
         # overlay_map = overlay_traj_to_map(traj_sample, overlay_map)
         
         # vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} semantic with traj self'.format(mode, step)))
 
-        overlay_map = feat[i, 3, :, :].float().view(grid_size, -1).numpy()
+        overlay_map = feat[i, 2, :, :].float().view(grid_size, -1).numpy()
         if policy_sample_list is not None:
             print(policy_sample_list[i])
             policy_sample = np.array(policy_sample_list[i])  # choose one sample from the batch
 
             policy_sample = policy_sample.astype(np.int64)
             overlay_map = overlay_traj_to_map(policy_sample, overlay_map)
-        vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} semantic with learned traj'.format(mode, step)))
+        vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} rgb with learned traj'.format(mode, step)))
+        if (feat.shape[1] >3):
+            vis.heatmap(X=feat[i, 3, :, :].float().view(grid_size, -1),
+                        opts=dict(colormap='Electric', title='{}, Past Traj {} human'.format(mode, step)))
         if (feat.shape[1] >4):
             vis.heatmap(X=feat[i, 4, :, :].float().view(grid_size, -1),
-                        opts=dict(colormap='Electric', title='{}, Traj {} self'.format(mode, step)))
-        if (feat.shape[1] >5):
-            vis.heatmap(X=feat[i, 5, :, :].float().view(grid_size, -1),
                         opts=dict(colormap='Electric', title='{}, Traj {} other'.format(mode, step)))
 
         # vis.heatmap(X=feat[0, 3, :, :].float().view(grid_size, -1),
@@ -112,6 +112,7 @@ def rl(traj_sample, r_sample, model, grid_size):
     svf_sample = model.find_svf(traj_sample, policy)
     svf_diff_sample = svf_demo_sample - svf_sample
     zeroing_loss = np.where(svf_sample>0,svf_demo_sample + svf_sample, 0.0)
+    expected_return = model.compute_return(r_sample, traj_sample)
     # (1, n_feature, grid_size, grid_size)
     svf_diff_sample = svf_diff_sample.reshape(1, 1, grid_size, grid_size)
     zeroing_loss_sample = zeroing_loss.reshape(1, 1, grid_size, grid_size)
