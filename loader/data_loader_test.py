@@ -116,7 +116,7 @@ class OffroadLoader(Dataset):
         
         human_future_traj = [[16,16]]
         
-        feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 0)
+        # feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 0)
         ### Add the traj features 
         human_traj_feature = np.zeros(goal_sink_feat.shape)
         # human_traj_feature[0,list(np.array(human_past_traj[:,0], np.int)), list(np.array(human_past_traj[:,1], np.int))] = 100
@@ -125,7 +125,7 @@ class OffroadLoader(Dataset):
         
         # other_traj_feature[0,list(np.array(past_other_traj[:,0], np.int)), list(np.array(past_other_traj[:,1], np.int))] = 100
         # kin_feats = np.concatenate((self_traj_feature, ther_traj_feature), axis = 0)
-        feat = np.concatenate((feat, human_traj_feature), axis = 0)
+        feat = np.concatenate((semantic_img_feat, human_traj_feature), axis = 0)
         # normalize features locally
 
         for i in range(feat.shape[0]):
