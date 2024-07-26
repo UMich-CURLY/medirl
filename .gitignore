@@ -12,3 +12,8 @@ exp/
 .mozilla/
 .ipython/
 .bash_history
+.config/
+.docker.xauth/
+.keras/
+.local/
+.nv/
