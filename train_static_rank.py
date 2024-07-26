@@ -80,6 +80,16 @@ def get_traj_length_unique(traj):
     return np.array(lengths), traj_list_full
 
 
+def normalize_by_max(input):
+    offset = input - torch.min(input)
+    output = offset / torch.max(offset)
+    return output
+
+def normalize_rank(input):
+    print("Input is ", torch.max(input.float()- 0.3, torch.zeros((input.shape))))
+    # return torch.max(input.float()- 0.3, torch.zeros((input.shape))) 
+    return input.float() - 0.3
+
 def zeroing_loss(c_zero, zeroing_loss): 
     zeroing_loss_r = zeroing_loss.clone()
     for i in range(len(c_zero)):
@@ -88,21 +98,21 @@ def zeroing_loss(c_zero, zeroing_loss):
 """ init param """
 #pre_train_weight = 'pre-train-v6-dilated/step1580-loss0.0022763446904718876.pth'
 pre_train_weight = None
-vis_per_steps = 20
+vis_per_steps = 100
 test_per_steps = 20
 # resume = "step280-loss0.5675923794730127.pth"
 resume = None
-exp_name = '6.07'
+exp_name = '6.23'
 grid_size = 60
 discount = 0.9
 lr = 5e-4
-n_epoch = 128
+n_epoch = 16
 batch_size = 8
 n_worker = 2
 use_gpu = True
 
 loss_criterion = torch.nn.CrossEntropyLoss()
-
+loss_criterion = torch.nn.L1Loss()
 
 if not os.path.exists(os.path.join('exp', exp_name+"robot")):
     os.makedirs(os.path.join('exp', exp_name+"robot"))
@@ -125,7 +135,7 @@ test_loader_robot = DataLoader(test_loader_robot, num_workers=n_worker, batch_si
 
 # net_robot = HybridDilated(feat_in_size = 4, feat_out_size = 50)
 # net_robot = OnlyEnvDilated(feat_in_size = 4, feat_out_size = 50)
-net_robot = RewardNet(n_channels=4, n_classes=1, n_kin = 0)
+net_robot = RewardNet(n_channels=6, n_classes=1, n_kin = 0)
 
 
 
@@ -145,6 +155,8 @@ nll_cma_human = 0
 nll_test_human = 0
 nll_cma_robot = 0
 nll_test_robot = 0
+loss_cma = 0
+loss_test = 0
 
 if resume is None:
     if pre_train_weight is None:
@@ -169,8 +181,10 @@ train_nll_win_robot = vis2.line(X=np.array([[-1, -1]]), Y=np.array([[nll_cma_rob
                          opts=dict(xlabel='steps', ylabel='loss', title='train acc robot'))
 test_nll_win_robot = vis2.line(X=np.array([-1]), Y=np.array([nll_test_robot]),
                         opts=dict(xlabel='steps', ylabel='loss', title='test acc robot'))
-""" train """
-
+train_loss_win = vis2.line(X=np.array([[-1, -1]]), Y=np.array([[loss_cma, loss_cma]]),
+                         opts=dict(xlabel='steps', ylabel='loss', title='train loss'))
+test_loss_win = vis2.line(X=np.array([-1]), Y=np.array([loss_test]),
+                        opts=dict(xlabel='steps', ylabel='loss', title='test loss'))
 total_demos = len(train_loader_robot.dataset)
 
 best_test_nll_human = np.inf
@@ -191,8 +205,8 @@ for epoch in range(n_epoch):
         batch_iter.append(feat.shape[0])
         start_full_index = batch_size*index
         end_full_index = batch_size*index+batch_iter[-1]
-        print("Index is!!!! ", start_full_index, end_full_index)
-        print("Shape of feat is", feat.shape)
+        # print("Index is!!!! ", start_full_index, end_full_index)
+        # print("Shape of feat is", feat.shape)
         ### Initialize the traj feature with just the past trajectory
         # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, past_traj_r)
         # if not np.isnan(prev_predicted_traj_human[start_full_index:end_full_index].all()):
@@ -202,7 +216,7 @@ for epoch in range(n_epoch):
         feat[:,3,:] = get_traj_feature(feat[:,0], grid_size, human_past_traj)
         # print(feat_test)
         # feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, robot_past_traj)
-        nll_list_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, zeroing_loss_r = pred(feat, robot_traj, net_robot, n_states, model_robot, grid_size)
+        nll_list_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, expected_return, zeroing_loss_r = pred(feat, robot_traj, net_robot, n_states, model_robot, grid_size)
         # prev_past_traj_robot[start_full_index:end_full_index] = past_traj_r
         # prev_predicted_traj_robot[start_full_index:end_full_index] = auto_pad_future(grid_size, np.array(sampled_trajs_r))
         ### Use perfect information 
@@ -211,23 +225,63 @@ for epoch in range(n_epoch):
         # a hack to enable backprop in pytorch with a vector
         # the normally used loss.backward() only works when loss is a scalar
         c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
+        c_zero = np.zeros(c_zero.shape)
         for i in range(len(c_zero)):
             zeroing_loss_r[i] = c_zero[i]*zeroing_loss_r[i]
-        torch.autograd.backward([r_var_r], [-svf_diff_var_r])  # to maximize, hence add minus sign
+        traj_rank_weight = normalize_rank(demo_rank)
+        traj_rank_weight = traj_rank_weight.unsqueeze(dim=1)
+        traj_rank_weight = traj_rank_weight.unsqueeze(dim=2)
+        traj_rank_weight = traj_rank_weight.unsqueeze(dim=3)
+        print("SHapes for svf and zeroing loss are ", svf_diff_var_r.shape, zeroing_loss_r.shape)
+        # torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float() + zeroing_loss_r.float())])  # to maximize, hence add minus sign
+        # torch.autograd.backward([r_var_r], [-svf_diff_var_r.float()])  # to maximize, hence add minus sign
+        torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float())])
+        ### Original loss 
+        # torch.autograd.backward([r_var_r], [-svf_diff_var_r.float()])  # to maximize, hence add minus sign
+        # print(svf_diff_var_r.shape)
+        half_batch_size = int(np.floor(expected_return.shape[0] / 2))
+        expected_return_var_i = expected_return[:half_batch_size]
+        expected_return_var_j = expected_return[half_batch_size:half_batch_size*2]
+        if half_batch_size == 1:
+            # print("unsqeeuzed", torch.transpose(expected_return_var_i.unsqueeze(dim=0), 0, 1))
+            output = torch.cat((expected_return_var_i.unsqueeze(dim=0), (expected_return_var_j.unsqueeze(dim=0))), dim=1)
+        else:
+            output = torch.cat((expected_return_var_i.unsqueeze(dim=1), expected_return_var_j.unsqueeze(dim=1)), dim=1)
         # loss = zeroing_loss(c_zero, zeroing_loss_r)
         # loss_var = Variable(loss, requires_grad=True)
         # loss_var.backward()
+
+        rank_cons_i = demo_rank[:half_batch_size]
+        rank_cons_j = demo_rank[half_batch_size:half_batch_size*2]
+        if (half_batch_size == 1):
+            target = torch.dot(torch.gt(rank_cons_i, rank_cons_j).float(), torch.sub(rank_cons_i, rank_cons_j)).long()
+        else:
+            target = torch.dot(torch.gt(rank_cons_i, rank_cons_j).float(), torch.sub(rank_cons_i, rank_cons_j).float()).unsqueeze(dim=0) # 0 when i is better, 1 when j is better
+        print(torch.dot(torch.gt(rank_cons_i, rank_cons_j).float(), torch.sub(rank_cons_i, rank_cons_j).float()))
+        print(output, torch.sub(rank_cons_i, rank_cons_j).float())
+        output = expected_return
+        print("Out put and target ", output, demo_rank)
+        loss = loss_criterion(normalize_by_max(output), normalize_rank(demo_rank.float()))
+        loss_var = Variable(loss, requires_grad=True)
+        # loss_var = Variable(demo_rank.type(torch.DoubleTensor), requires_grad = True)
+        print(loss_var/len(demo_rank))
+        # loss_var.backward()
         opt_robot.step()
-        
+        normalized_rank = normalize_rank(demo_rank)
+        print("Normlized ranks is ", normalized_rank)
+        for i in range(len(nll_list_r)):
+            nll_list_r[i] = nll_list_r[i]*normalized_rank[i]
+
         nll_r = sum(nll_list_r) / len(nll_list_r)
         print('main. acc {}. took {} s'.format(nll_r, time.time() - start))
 
         # cma. cumulative moving average. window size < 20
         nll_cma_robot = (nll_r + nll_cma_robot * min(step, 20)) / (min(step, 20) + 1)
         vis2.line(X=np.array([[step, step]]), Y=np.array([[nll_r, nll_cma_robot]]), win=train_nll_win_robot, update='append')
-
+        loss_cma = (loss + loss_cma * min(step, 20)) / (min(step, 20) + 1)
+        vis2.line(X=np.array([[step, step]]), Y=np.array([[loss, loss_cma]]), win=train_loss_win, update='append')
         if step % vis_per_steps == 0 and not step ==0 :
-            visualize_batch([robot_traj[0]], robot_traj, feat, r_var_r, values_list_r, svf_diff_var_r , step, vis2, grid_size, train=True, policy_sample_list=sampled_trajs_r)
+            visualize_batch([robot_traj[0]], robot_traj, feat, r_var_r, values_list_r, svf_diff_var_r , step, vis2, grid_size, train=True, policy_sample_list=sampled_trajs_r, rank_list=demo_rank)
             if step == 0:
                 step += 1
                 continue
@@ -237,7 +291,7 @@ for epoch in range(n_epoch):
             net_robot.eval()
             nll_test_list_human = []
             nll_test_list_robot = []
-            for test_index, (feat_r, robot_traj, human_past_traj, robot_past_traj) in enumerate(test_loader_robot):
+            for test_index, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank) in enumerate(test_loader_robot):
                 # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, past_traj_r)
                 # if not np.isnan(prev_predicted_traj_human[start_full_index:end_full_index].all()):
                 #     if not np.isnan(prev_past_traj_human[start_full_index:end_full_index]).all():
@@ -249,12 +303,13 @@ for epoch in range(n_epoch):
                 #     if not np.isnan(prev_past_traj_robot[start_full_index:end_full_index]).all():
                 #         feat_h[:,5,:] = get_traj_feature(feat_h[:,0], grid_size, prev_past_traj_robot[start_full_index:end_full_index], prev_predicted_traj_robot[start_full_index:end_full_index])
                 # feat_h[:,4,:] = get_traj_feature(feat_h[:,0], grid_size, past_traj_r, future_traj_r)
-                tmp_nll_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, _ = pred(feat_r, robot_traj, net_robot, n_states, model_robot, grid_size)
+                tmp_nll_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, _, _ = pred(feat_r, robot_traj, net_robot, n_states, model_robot, grid_size)
                 nll_test_list_robot += tmp_nll_r
             nll_test_robot = sum(nll_test_list_robot) / len(nll_test_list_robot)
             print('main. test nll {}'.format(nll_test_robot))
             vis2.line(X=np.array([step]), Y=np.array([nll_test_robot]), win=test_nll_win_robot, update='append')
-            visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, svf_diff_var_r, step, vis2, grid_size, train=False, policy_sample_list=sampled_trajs_r)
+            if step % vis_per_steps+50 == 0 and not step ==0:
+                visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, svf_diff_var_r, step, vis2, grid_size, train=False, policy_sample_list=sampled_trajs_r)
             # print("Robot Traj is ", robot_traj)
             # print("Sampled Traj is ", sampled_trajs_r)
             if nll_test_robot < best_test_nll_robot:

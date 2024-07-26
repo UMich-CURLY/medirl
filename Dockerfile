@@ -24,22 +24,35 @@ RUN export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CUDA_HOME/lib64:$CUDA_HOME/extras/
 RUN sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
 RUN curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add -
 
+# RUN curl -L -k -o ~/miniconda.sh -O  https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh  &&\
+#     chmod +x ~/miniconda.sh &&\
+#     ~/miniconda.sh -b -p /opt/conda &&\
+#     rm ~/miniconda.sh &&\
+#     /opt/conda/bin/conda install numpy pyyaml scipy ipython mkl mkl-include &&\
+#     /opt/conda/bin/conda clean -ya
+# ENV PATH /opt/conda/bin:$PATH
 
-RUN apt-get update && apt-get install -y \
-    python-tk \
-    ros-kinetic-desktop-full \
-    ros-kinetic-move-base \
-    ros-kinetic-tf2-sensor-msgs \
-    python-rosdep \
-    python-rosinstall \
-    python-rosinstall-generator \
-    build-essential
+# # Install cmake
+# RUN wget https://github.com/Kitware/CMake/releases/download/v3.14.0/cmake-3.14.0-Linux-x86_64.sh
+# RUN mkdir /opt/cmake
+# RUN sh /cmake-3.14.0-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
+# RUN ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
+# RUN cmake --version
 
-RUN rosdep init && rosdep update
+
+# RUN apt-get update && apt-get install -y lsb-release && apt-get clean all
+RUN conda config --set ssl_verify false
+RUN conda create -n robostackenv python=3.9 -c conda-forge
+RUN /bin/bash -c ". activate robostackenv; conda config --env --add channels conda-forge; conda config --env --add channels robostack-experimental; conda config --env --add channels robostack"
+RUN /bin/bash -c ". activate robostackenv; conda install -y ros-noetic-desktop"
+# RUN /bin/bash -c ". activate robostackenv; conda install -y ros-noetic-map-server"
+# RUN /bin/bash -c ". activate robostackenv; conda install -y ros-noetic-move-base"
+# RUN /bin/bash -c ". activate robostackenv; conda install -y ros-noetic-amcl"
+
 WORKDIR /root/catkin_ws
-RUN pip install rospkg
-# RUN catkin_make
-RUN echo "source ~/catkin_ws/devel/setup.bash" >> ~/.bashrc
+# RUN pip install rospkg
+# # RUN catkin_make
+# RUN echo "source ~/catkin_ws/devel/setup.bash" >> ~/.bashrc
 ENV ROS_MASTER_URI=http://172.17.0.1:11311
 ENV ROS_IP=172.17.0.1
 ENV DISPLAY=unix$DISPLAY
