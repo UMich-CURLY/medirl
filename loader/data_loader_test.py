@@ -144,6 +144,9 @@ class OffroadLoader(Dataset):
         
         robot_traj = self.auto_pad_future(robot_traj[:, :2])
         human_past_traj = self.auto_pad_past(human_past_traj[:, :2])
+        temp_feat = np.zeros(2, feat.shape[1], feat.shape[2])
+        feat = np.concatenate((feat, temp_feat), axis = 0)
+        print("Shape here is ", feat.shape)
         # future_other_traj = self.auto_pad_future(future_other_traj[:, :2])
         return feat, robot_traj, human_past_traj
 

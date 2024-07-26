@@ -16,7 +16,7 @@ def overlay_traj_to_map(traj, feat, value1=5.0):
     return overlay_map
 
 
-def visualize_batch(past_traj, traj, feat, r_var, values, svf_diff_var, step, vis, grid_size, train=True, policy_sample_list = None):
+def visualize_batch(past_traj, traj, feat, r_var, values, svf_diff_var, step, vis, grid_size, train=True, policy_sample_list = None, rank_list = None ):
     mode = 'train' if train else 'test'
     n_batch = traj.shape[0]
     # n_batch = 1
@@ -40,7 +40,10 @@ def visualize_batch(past_traj, traj, feat, r_var, values, svf_diff_var, step, vi
 
             policy_sample = policy_sample.astype(np.int64)
             overlay_map = overlay_traj_to_map(policy_sample, overlay_map)
-        vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} rgb with learned traj'.format(mode, step)))
+        if rank_list is not None:
+            vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {}, rank{}'.format(mode, step, rank_list[i])))
+        else:
+            vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} rgb with learned traj'.format(mode, step)))
         if (feat.shape[1] >3):
             vis.heatmap(X=feat[i, 3, :, :].float().view(grid_size, -1),
                         opts=dict(colormap='Electric', title='{}, Past Traj {} human'.format(mode, step)))
@@ -113,6 +116,8 @@ def rl(traj_sample, r_sample, model, grid_size):
     svf_diff_sample = svf_demo_sample - svf_sample
     zeroing_loss = np.where(svf_sample>0,svf_demo_sample + svf_sample, 0.0)
     expected_return = model.compute_return(r_sample, traj_sample)
+    expected_return_sample = np.array([expected_return])
+    expected_return_var_sample = Variable(torch.from_numpy(expected_return_sample).float())
     # (1, n_feature, grid_size, grid_size)
     svf_diff_sample = svf_diff_sample.reshape(1, 1, grid_size, grid_size)
     zeroing_loss_sample = zeroing_loss.reshape(1, 1, grid_size, grid_size)
@@ -120,7 +125,7 @@ def rl(traj_sample, r_sample, model, grid_size):
     zeroing_loss_var_sample = Variable(torch.from_numpy(zeroing_loss_sample).float(), requires_grad=False)
     # embed()
     nll_sample = model.compute_nll(policy, traj_sample)
-    return nll_sample, svf_diff_var_sample, values_sample, sampled_traj, zeroing_loss_var_sample
+    return nll_sample, svf_diff_var_sample, values_sample, sampled_traj, expected_return_var_sample, zeroing_loss_var_sample
 
 
 def pred(feat, traj, net, n_states, model, grid_size):
@@ -144,10 +149,12 @@ def pred(feat, traj, net, n_states, model, grid_size):
     svf_diff_var_list = [result[i].get()[1] for i in range(n_sample)]
     values_list = [result[i].get()[2] for i in range(n_sample)]
     policy_sample_list = [result[i].get()[3] for i in range(n_sample)]
-    zeroing_loss_list = [result[i].get()[4] for i in range(n_sample)]
+    expected_return_list = [result[i].get()[4] for i in range(n_sample)]
+    zeroing_loss_return_list = [result[i].get()[5] for i in range(n_sample)]
     svf_diff_var = torch.cat(svf_diff_var_list, dim=0)
-    zeroing_loss = torch.cat(zeroing_loss_list, dim=0)
-    return nll_list, r_var, svf_diff_var, values_list, policy_sample_list, zeroing_loss
+    expected_return = torch.cat(expected_return_list, dim=0)
+    zeroing_loss = torch.cat(zeroing_loss_return_list)
+    return nll_list, r_var, svf_diff_var, values_list, policy_sample_list, expected_return, zeroing_loss
 
 
 ### No multi processing for this one 

@@ -7,3 +7,8 @@ exp/
 .ros/
 .python_history
 .visdom
+.cache/
+.conda/
+.mozilla/
+.ipython/
+.bash_history
