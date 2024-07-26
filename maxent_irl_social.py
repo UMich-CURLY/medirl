@@ -21,17 +21,17 @@ def visualize_batch(past_traj, traj, feat, r_var, values, svf_diff_var, step, vi
     n_batch = traj.shape[0]
     # n_batch = 1
     for i in range(n_batch):
-        # traj_sample = traj[i].numpy()  # choose one sample from the batch
-        # traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
-        # traj_sample = traj_sample.astype(np.int64)
+        traj_sample = traj[i].numpy()  # choose one sample from the batch
+        traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
+        traj_sample = traj_sample.astype(np.int64)
 
         # vis.heatmap(X=feat[i, 0, :, :].float().view(grid_size, -1),
                 # opts=dict(colormap='Electric', title='{}, step {} RBG'.format(mode, step)))
 
         overlay_map = feat[i, 1, :, :].float().view(grid_size, -1).numpy()  # (grid_size, grid_size)
-        # overlay_map = overlay_traj_to_map(traj_sample, overlay_map)
+        overlay_map = overlay_traj_to_map(traj_sample, overlay_map)
         
-        # vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} semantic with traj self'.format(mode, step)))
+        vis.heatmap(X=overlay_map, opts=dict(colormap='Electric', title='{}, step {} semantic with traj self'.format(mode, step)))
 
         overlay_map = feat[i, 2, :, :].float().view(grid_size, -1).numpy()
         if policy_sample_list is not None:
@@ -50,7 +50,9 @@ def visualize_batch(past_traj, traj, feat, r_var, values, svf_diff_var, step, vi
         if (feat.shape[1] >4):
             vis.heatmap(X=feat[i, 4, :, :].float().view(grid_size, -1),
                         opts=dict(colormap='Electric', title='{}, Traj {} other'.format(mode, step)))
-
+        if (feat.shape[1] >5):
+            vis.heatmap(X=feat[i, 5, :, :].float().view(grid_size, -1),
+                        opts=dict(colormap='Electric', title='{}, Traj {} other'.format(mode, step)))
         # vis.heatmap(X=feat[0, 3, :, :].float().view(grid_size, -1),
         #             opts=dict(colormap='Electric', title='{}, step {} Red Semantic'.format(mode, step)))
         
@@ -114,7 +116,10 @@ def rl(traj_sample, r_sample, model, grid_size):
     sampled_traj = model.traj_sample(policy, traj_sample.shape[0], traj_sample[0,0], traj_sample[0,1])
     svf_sample = model.find_svf(traj_sample, policy)
     svf_diff_sample = svf_demo_sample - svf_sample
-    zeroing_loss = np.where(svf_sample>0,svf_demo_sample + svf_sample, 0.0)
+    print("Shapes are ", svf_demo_sample.shape, svf_sample.shape)
+    zeroing_loss = np.where(np.round(svf_sample+svf_demo_sample,3)>0.0, 1.0, 0.0)
+    zeroing_loss = zeroing_loss.astype(np.float32)
+    
     expected_return = model.compute_return(r_sample, traj_sample)
     expected_return_sample = np.array([expected_return])
     expected_return_var_sample = Variable(torch.from_numpy(expected_return_sample).float())

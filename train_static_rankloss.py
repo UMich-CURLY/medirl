@@ -126,7 +126,7 @@ vis_per_steps = 1000
 test_per_steps = 500
 # resume = "step280-loss0.5675923794730127.pth"
 resume = None
-exp_name = '6.37'
+exp_name = '6.38'
 grid_size = 60
 discount = 0.9
 lr = 5e-3
@@ -136,13 +136,13 @@ n_worker = 2
 use_gpu = True
 
 loss_criterion = torch.nn.CrossEntropyLoss()
-loss_criterion = torch.nn.L1Loss()
+# loss_criterion = torch.nn.L1Loss()
 
 if not os.path.exists(os.path.join('exp', exp_name+"robot")):
     os.makedirs(os.path.join('exp', exp_name+"robot"))
 
 host = os.environ['HOSTNAME']
-vis2 = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8098)
+vis2 = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8091)
 
 # vis = visdom.Visdom(env='main')
 
@@ -263,6 +263,14 @@ for epoch in range(n_epoch):
     
         # torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float() + zeroing_loss_r.float())])  # to maximize, hence add minus sign
         torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float()+ zeroing_loss_r.float())])  # to maximize, hence add minus sign
+        embed()
+        one_hot_rank = torch.zeros((len(demo_rank)))
+        for i in range(len(demo_rank)):
+            one_hot_rank[int(demo_rank[i]*10)] = 1
+
+        loss = loss_criterion(expected_return.unsqueeze(dim=0), one_hot_rank)
+        loss_var = Variable(loss, requires_grad=True)
+        loss_var.backward()
         # torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float())])
         ### Original loss 
         # torch.autograd.backward([r_var_r], [-svf_diff_var_r.float()])  # to maximize, hence add minus sign

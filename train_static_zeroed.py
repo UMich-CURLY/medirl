@@ -123,14 +123,14 @@ def zeroing_loss(c_zero, zeroing_loss):
 #pre_train_weight = 'pre-train-v6-dilated/step1580-loss0.0022763446904718876.pth'
 pre_train_weight = None
 vis_per_steps = 1000
-test_per_steps = 500
+test_per_steps = 100
 # resume = "step280-loss0.5675923794730127.pth"
 resume = None
-exp_name = '6.37'
+exp_name = '6.33'
 grid_size = 60
 discount = 0.9
 lr = 5e-3
-n_epoch = 16
+n_epoch = 8
 batch_size = 8
 n_worker = 2
 use_gpu = True
@@ -142,7 +142,7 @@ if not os.path.exists(os.path.join('exp', exp_name+"robot")):
     os.makedirs(os.path.join('exp', exp_name+"robot"))
 
 host = os.environ['HOSTNAME']
-vis2 = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8098)
+vis2 = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8099)
 
 # vis = visdom.Visdom(env='main')
 
@@ -159,7 +159,7 @@ test_loader_robot = DataLoader(test_loader_robot, num_workers=n_worker, batch_si
 
 # net_robot = HybridDilated(feat_in_size = 4, feat_out_size = 50)
 # net_robot = OnlyEnvDilated(feat_in_size = 4, feat_out_size = 50)
-net_robot = RewardNet(n_channels=7, n_classes=1, n_kin = 0)
+net_robot = RewardNet(n_channels=6, n_classes=1, n_kin = 0)
 
 
 
@@ -250,10 +250,14 @@ for epoch in range(n_epoch):
         opt_robot.zero_grad()
         # a hack to enable backprop in pytorch with a vector
         # the normally used loss.backward() only works when loss is a scalar
+        r_vars_zeroed = r_var_r.clone()
+        r_vars_zeroed = r_vars_zeroed*zeroing_loss_r
+
         c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
-        c_zero = np.zeros(c_zero.shape)
+        # c_zero = np.zeros(c_zero.shape)
+        grad_zeroed = torch.zeros(r_vars_zeroed.shape)
         for i in range(len(c_zero)):
-            zeroing_loss_r[i] = c_zero[i]*zeroing_loss_r[i]
+            grad_zeroed[i] = 0.001*(zeroing_loss_r[i])
         # traj_rank_weight = normalize_rank(demo_rank)
         traj_rank_weight = demo_rank
         traj_rank_weight = traj_rank_weight.unsqueeze(dim=1)
@@ -262,7 +266,9 @@ for epoch in range(n_epoch):
         print("Demo rank is ", demo_rank)
     
         # torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float() + zeroing_loss_r.float())])  # to maximize, hence add minus sign
-        torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float()+ zeroing_loss_r.float())])  # to maximize, hence add minus sign
+        torch.autograd.backward([r_vars_zeroed], [-(svf_diff_var_r.float())])  # to maximize, hence add minus sign
+        # torch.autograd.backward([r_vars_zeroed], [-grad_zeroed])  # to maximize, hence add minus sign
+        
         # torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float())])
         ### Original loss 
         # torch.autograd.backward([r_var_r], [-svf_diff_var_r.float()])  # to maximize, hence add minus sign

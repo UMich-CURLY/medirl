@@ -12,3 +12,4 @@ exp/
 .mozilla/
 .ipython/
 .bash_history
+*.log

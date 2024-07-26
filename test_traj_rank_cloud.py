@@ -37,15 +37,18 @@ torch.set_default_tensor_type('torch.DoubleTensor')
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 import ros_numpy
 resume = None
-exp_name = '6.22robot'
-resume  = 'step1120-loss0.11265929055758643.pth'
+exp_name = '6.37robot'
+resume  = 'step8000-loss0.5276108335174007.pth'
 GRID_RESOLUTION = 0.1
 CLEARANCE_THRESH = 0.5/GRID_RESOLUTION
 GRID_SIZE_IN_M = 6
 grid_size = int(np.floor(GRID_SIZE_IN_M/GRID_RESOLUTION))
-TRAJ_LEN = 10
-# host = os.environ['HOSTNAME']
-# vis = visdom.Visdom(env='v{}-{}'.format(exp_name, host), server='http://127.0.0.1', port=8099)
+TRAJ_LEN = 20
+USE_VEL = True
+VISUALIZE = True
+if VISUALIZE:
+    host = os.environ['HOSTNAME']
+    vis = visdom.Visdom(env='v{}-{}'.format(exp_name, host), server='http://127.0.0.1', port=8099)
 mutex = threading.Lock()
 def transpose_traj(traj):
     for i in range(traj.shape[0]):
@@ -65,6 +68,15 @@ def get_heading_feat(pos, heading):
         temp_sink_feat[0, point[0], point[1]] = heading[0] + np.pi + 1.0
     for point in human_points:
         temp_sink_feat[0, point[0], point[1]] = heading[1] + np.pi + 1.0
+    return torch.from_numpy(temp_sink_feat)
+
+def get_vel_feat(pos, vel):
+    temp_sink_feat = np.zeros([1,grid_size, grid_size])
+    radius_in_px = 2
+    human_points = points_inside_circle((pos[0], pos[1]), radius_in_px)
+    
+    for point in human_points:
+        temp_sink_feat[0, point[0], point[1]] = vel * 3.0 + 1.0
     return torch.from_numpy(temp_sink_feat)
 
 def get_goal_feat( goal_coords):
@@ -102,6 +114,35 @@ def get_traj_feature(goal_sink_feat, grid_size, past_traj, future_traj = None):
                 feat[i,int(x),int(y)] = val
                 index = index+1
     
+    return torch.from_numpy(feat)
+
+def get_traj_feat_time(goal_sink_feat, grid_size, past_traj, future_traj = None):
+    feat = np.zeros(goal_sink_feat.shape)
+    img = np.zeros([grid_size, grid_size, 3])
+    for i in range(goal_sink_feat.shape[0]):
+        index = 1
+        vals = np.linspace(0, 6, len(past_traj[i]))
+        # print(past_traj[i].shape)
+        for val in vals:
+            [x,y] = past_traj[i][len(past_traj[i])-index]
+            index = index+1
+            if np.isnan([x,y]).any():
+                continue
+            feat[i,int(x),int(y)] = val
+            img[int(x),int(y),:] = [int(val*255/6.0),0,0]
+            
+        if future_traj is not None:
+            index = 0
+            vals = np.linspace(3, 4 ,len(future_traj[i]))
+            for val in vals:
+                [x,y] = future_traj[i][index]
+                if np.isnan([x,y]).any():
+                    continue
+                feat[i,int(x),int(y)] = val
+                index = index+1
+    
+    # im=Image.fromarray(np.uint8(img))
+    # im.save("feat.png")
     return torch.from_numpy(feat)
 
 def get_traj_length(traj):
@@ -157,10 +198,12 @@ def traj_interp(c):
 def get_data(*msgs):
     embed()
 def points_inside_circle( center, radius):
-        cx, cy = center
+        cx =  int(center[0])
+        cy =  int(center[1])
         points = []
         
         # Define the bounding box of the circle
+        print("Center is ", center)
         for x in range(cx - radius, cx + radius + 1):
             for y in range(cy - radius, cy + radius + 1):
                 # Check if the point is inside the circle
@@ -169,6 +212,29 @@ def points_inside_circle( center, radius):
                         points.append((x, y))
         
         return points
+
+def auto_pad_past(traj):
+        """
+        add padding (NAN) to traj to keep traj length fixed.
+        traj shape needs to be fixed in order to use batch sampling
+        :param traj: numpy array. (traj_len, 2)
+        :return:
+        """
+        fixed_len = grid_size*50
+        traj = traj_interp(traj)
+        traj = np.array(traj)
+        if traj.shape[0] >= fixed_len:
+            traj = traj[0:fixed_len, :]
+            traj = traj.astype(int)
+            return traj
+            #raise ValueError('traj length {} must be less than grid_size {}'.format(traj.shape[0], self.grid_size))
+        pad_len = fixed_len - traj.shape[0]
+        # pad_array = np.full((pad_len, 2), np.array([int(traj[-1][0]), int(traj[-1][1])]))
+        pad_array = np.full((pad_len, 2), np.NaN)
+        output = np.vstack((traj, pad_array))
+        # print("Output is ", output)
+        return output
+
 class irl():
     def __init__(self, grid_size=grid_size):
         
@@ -204,7 +270,7 @@ class irl():
         batch_size = 1
         # loader = OffroadLoader(grid_size=grid_size, train=False)
         # self.loader = DataLoader(loader, num_workers=n_worker, batch_size=batch_size, shuffle=False)
-        self.net = RewardNet(n_channels=6, n_classes=1, n_kin = 0)
+        self.net = RewardNet(n_channels=7, n_classes=1, n_kin = 0)
         # self.net.init_weights()
         checkpoint = torch.load(os.path.join('exp', exp_name, resume))
         self.net.load_state_dict(checkpoint['net_state'])
@@ -213,6 +279,7 @@ class irl():
         self.prev_reward = None
         self.prev_traj = None
         self.prev_robot_pose = None
+        self.human_vel = 0.0
 
     def is_start(self, msg):
         # self.net.eval()
@@ -229,7 +296,7 @@ class irl():
             mutex.release()
             # embed()
             return 
-        feat = torch.empty((1,6, grid_size, grid_size), dtype=torch.float64)
+        feat = torch.empty((1,7, grid_size, grid_size), dtype=torch.float64)
         # for step, (feat, robot_traj, human_past_traj, robot_past_traj)  in enumerate(self.loader):
         start = time.time()
         # human_traj = transpose_traj(np.array(self.human_traj))
@@ -270,10 +337,13 @@ class irl():
                 semantic_img_feat[i] = semantic_img_feat[i] / np.mean(semantic_img_feat[i])*np.ones(semantic_img_feat[i].shape)
         feat[:,0:3,:] = torch.from_numpy(semantic_img_feat)
         feat[:,3,:] = get_traj_feature(feat[:,0], grid_size, [self.human_traj])
-        print([self.robot_traj, self.human_traj[-1]])
-        feat[:,4,:] = get_heading_feat([self.robot_traj, self.human_traj[-1]], [self.robot_angle, self.human_angle])
+        print("Get heading of ", [self.robot_traj, self.human_traj[0]])
+        feat[:,4,:] = get_heading_feat([self.robot_traj, self.human_traj[0]], [self.robot_angle, self.human_angle])
         if feat.shape[1] == 6:
             feat[:,5,:] = get_goal_feat(self.robot_goal)
+        if feat.shape[1] == 7:
+            feat[:,5,:] = get_vel_feat(self.human_traj[0], self.human_vel)
+            feat[:,6,:] = get_goal_feat(self.robot_goal)
         # feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, [self.robot_past_traj])
         # feat_var = Variable(feat)
         r_var = self.net(feat)
@@ -293,6 +363,7 @@ class irl():
             sampled_traj = self.model.traj_sample(policy, TRAJ_LEN, self.robot_traj[0], self.robot_traj[1])
             # nll_list, r_var, svf_diff_var, values_list, sampled_trajs_r, zeroing_loss_r = pred(feat, self.robot_traj, net, n_states, model, grid_size)
             # test_nll_list += nll_list
+            
             # visualize_batch(self.robot_traj, [sampled_traj], feat, r_var, [values_sample], np.zeros([32,32]), step, vis, grid_size, train=False)
             traj = traj_interp(np.array(sampled_traj))
             self.prev_traj = traj
@@ -321,7 +392,8 @@ class irl():
         # print("Publishing traj msg", msg)
         self._pub_traj.publish(msg)
         self._wait_traj.publish(False)
-        # visualize_batch(np.array([self.robot_traj[0]]), np.array([traj]), feat, r_var, [values_sample], None , self.counter, vis, grid_size, train=False, policy_sample_list=[traj])
+        if VISUALIZE and recalculate:
+            visualize_batch(np.array([self.robot_traj[0]]), torch.from_numpy(np.array([traj])), feat, r_var, [values_sample], None , self.counter, vis, grid_size, train=False, policy_sample_list=[traj])
         self.counter+=1
         self.img = None 
         self.robot_traj = None 
@@ -333,15 +405,20 @@ class irl():
 
     def people_callback(self, msg):
         mutex.acquire(blocking=True)
-        print("Got new human pose")
+        # print("Got new human pose", msg.poses)
         self.human_traj = []
         for pose in msg.poses:
             loc = [pose.pose.position.x/GRID_RESOLUTION, pose.pose.position.y/GRID_RESOLUTION]
             loc = self.contain_grid(loc)
-            self.human_traj.append(loc)
+            self.human_traj.insert(0,loc)
         self.human_traj = np.array(self.human_traj)
+        # print("traj before padding is ", self.human_traj)
+        self.human_traj = auto_pad_past(self.human_traj)
+        self.human_traj.astype(int)
+        # print("human traj is ", self.human_traj)
         orientation = [msg.poses[-1].pose.orientation.x, msg.poses[-1].pose.orientation.y, msg.poses[-1].pose.orientation.z, msg.poses[-1].pose.orientation.w]
-        self.human_angle = msg.poses[-1].pose.orientation.z
+        self.human_angle = msg.poses[-1].pose.orientation.z*10
+        self.human_vel = msg.poses[-1].pose.position.z
         mutex.release()
         # self.human_traj = self.auto_pad_past(self.human_traj)
 
@@ -364,7 +441,7 @@ class irl():
         self.robot_past_traj = np.array(self.robot_past_traj)
         self.robot_traj = np.array([self.robot_past_traj[-1][0], self.robot_past_traj[-1][1]])
         orientation = [msg.poses[-1].pose.orientation.x, msg.poses[-1].pose.orientation.y, msg.poses[-1].pose.orientation.z, msg.poses[-1].pose.orientation.w]
-        self.robot_angle = msg.poses[-1].pose.orientation.z
+        self.robot_angle = msg.poses[-1].pose.orientation.z*10
         mutex.release()
 
     def img_callback(self,msg):
@@ -404,21 +481,7 @@ class irl():
         self.has_started = True
 
 
-    def auto_pad_past(self, traj):
-        """
-        add padding (NAN) to traj to keep traj length fixed.
-        traj shape needs to be fixed in order to use batch sampling
-        :param traj: numpy array. (traj_len, 2)
-        :return:
-        """
-        fixed_len = grid_size
-        if traj.shape[0] >= grid_size:
-            traj = traj[traj.shape[0]-grid_size:, :]
-            #raise ValueError('traj length {} must be less than grid_size {}'.format(traj.shape[0], self.grid_size))
-        pad_len = grid_size - traj.shape[0]
-        pad_array = np.full((pad_len, 2), traj[0])
-        output = np.vstack((traj, pad_array))
-        return output
+
     
 if __name__ == "__main__":
         rospy.init_node("Get_Traj",anonymous=False)

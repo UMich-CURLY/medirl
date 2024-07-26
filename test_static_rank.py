@@ -25,9 +25,9 @@ n_worker = 2
 #resume = 'step700-loss0.6980162681374217.pth'
 #net = HybridDilated(feat_out_size=25, regression_hidden_size=64)
 
-exp_name = '6.15robot'
-resume  = 'step600-loss2.75.pth'
-net = RewardNet(n_channels=5, n_classes=1, n_kin = 0)
+exp_name = '6.37robot'
+resume  = 'step8000-loss0.5276108335174007.pth'
+net = RewardNet(n_channels=7, n_classes=1, n_kin = 0)
 # self.net.init_weights()
 checkpoint = torch.load(os.path.join('exp', exp_name, resume))
 net.load_state_dict(checkpoint['net_state'])
@@ -58,10 +58,11 @@ def get_traj_feature(goal_sink_feat, grid_size, past_traj, future_traj = None):
         index = 0
         for val in np.linspace(6, 5, past_lengths[i]):
             [x,y] = past_traj[i][index]
+            index = index+1
             if np.isnan([x,y]).any():
                 continue
             feat[i,int(x),int(y)] = 6
-            index = index+1
+            
         if future_traj is not None:
             index = 0
             for val in np.linspace(3, 4 ,future_lengths[i]):
@@ -71,6 +72,34 @@ def get_traj_feature(goal_sink_feat, grid_size, past_traj, future_traj = None):
                 feat[i,int(x),int(y)] = val
                 index = index+1
     
+    return torch.from_numpy(feat)
+
+def get_traj_feat_time(goal_sink_feat, grid_size, past_traj, future_traj = None):
+    feat = np.zeros(goal_sink_feat.shape)
+   
+    for i in range(goal_sink_feat.shape[0]):
+        index = 0
+        vals = np.linspace(0,6, past_traj[i].shape[1])
+
+        # print(past_traj[i].shape)
+        # print(vals)
+        for val in vals:
+            [x,y] = past_traj[i, :,index].float()
+            # print("XY", x,y, val)
+            index = index+1
+            if np.isnan([x,y]).any():
+                continue
+            feat[i,int(x),int(y)] = val
+            
+        if future_traj is not None:
+            index = 0
+            vals = np.linspace(3, 4 ,len(future_traj[i]))
+            for val in vals:
+                [x,y] = future_traj[i][index]
+                if np.isnan([x,y]).any():
+                    continue
+                feat[i,int(x),int(y)] = val
+                index = index+1
     return torch.from_numpy(feat)
 
 def get_traj_length(traj):
@@ -123,14 +152,14 @@ def get_traj_length_unique(traj):
 
 def rl(traj_sample, r_sample, model, grid_size):
     svf_demo_sample = model.find_demo_svf(traj_sample)
-    values_sample = model.find_optimal_value(r_sample, 0.1)
+    values_sample = model.find_optimal_value(r_sample, 0.01)
     policy = model.find_stochastic_policy(values_sample, r_sample)
     ### Can change to sampling longer trajectories
     sampled_traj = model.traj_sample(policy, traj_sample.shape[0], traj_sample[0,0], traj_sample[0,1])
     svf_sample = model.find_svf(traj_sample, policy)
     svf_diff_sample = svf_demo_sample - svf_sample
-    zeroing_loss = np.where(svf_sample>0,svf_demo_sample + svf_sample, 0.0)
-    # (1, n_feature, grid_size, grid_size)
+    zeroing_loss = np.where(np.round(svf_sample+svf_demo_sample,3)>0.0, 1.0, 0.0)
+    zeroing_loss = zeroing_loss.astype(np.float32)
     svf_diff_sample = svf_diff_sample.reshape(1, 1, grid_size, grid_size)
     zeroing_loss_sample = zeroing_loss.reshape(1, 1, grid_size, grid_size)
     svf_diff_var_sample = Variable(torch.from_numpy(svf_diff_sample).float(), requires_grad=False)
@@ -169,12 +198,12 @@ def pred(feat, traj, net, n_states, model, grid_size):
 
 
 host = os.environ['HOSTNAME']
-vis = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8098)
+vis = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8090)
 model = offroad_grid.OffroadGrid(grid_size, discount)
 n_states = model.n_states
 n_actions = model.n_actions
 
-loader = OffroadLoader(grid_size=grid_size, train=True)
+loader = OffroadLoader(grid_size=grid_size, train=False)
 loader = DataLoader(loader, num_workers=n_worker, batch_size=batch_size, shuffle=False)
 
 
@@ -196,12 +225,22 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank) in e
     #         feat_h[:,5,:] = get_traj_feature(feat_h[:,0], grid_size, prev_past_traj_robot[start_full_index:end_full_index], prev_predicted_traj_robot[start_full_index:end_full_index])
     # feat_h[:,4,:] = get_traj_feature(feat_h[:,0], grid_size, past_traj_r, future_traj_r)
     print("Feat is ", feat_r.shape)
-    tmp_nll_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, new_var = pred(feat_r, robot_traj, net, n_states, model, grid_size)
-    print("New var is ", new_var)
-    nll_test_list_robot += tmp_nll_r
-    visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, svf_diff_var_r, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r)
+    tmp_nll_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, zeroing_loss_r = pred(feat_r, robot_traj, net, n_states, model, grid_size)
+    r_vars_zeroed = r_var_r.clone()
+    r_vars_zeroed = r_vars_zeroed*zeroing_loss_r
 
+    c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
+    # c_zero = np.zeros(c_zero.shape)
+    grad_zeroed = torch.zeros(r_vars_zeroed.shape)
+    for i in range(len(c_zero)):
+        grad_zeroed[i] = c_zero[i]*(torch.ones(zeroing_loss_r[i].shape)-zeroing_loss_r[i])
+    # traj_rank_weight = normalize_rank(demo_rank)
+    print("Demo rank is ", demo_rank)
+    nll_test_list_robot += tmp_nll_r
+    if step % 2 == 0:
+        visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, r_vars_zeroed, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r, rank_list= demo_rank)
+    step += 1
 nll_test_robot = sum(nll_test_list_robot) / len(nll_test_list_robot)
 print('main. test nll {}'.format(nll_test_robot))
-visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, svf_diff_var_r, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r)
+visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, r_vars_zeroed, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r)
 

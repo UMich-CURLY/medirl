@@ -16,7 +16,8 @@ import random
 import copy
 import math
 USE_GOAL = True
-FIXED_LEN = 60
+FIXED_LEN = 20
+USE_VEL = True
 def transpose_traj(traj):
     for i in range(traj.shape[0]):
         temp = traj[i,0] 
@@ -84,7 +85,7 @@ def traj_interp(c):
     return d
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_jun_26_2', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='data/single_ep', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
@@ -99,19 +100,29 @@ class OffroadLoader(Dataset):
         # if demo is not None:
         #     self.data_dir = datadir + '/irl_data/' + demo
         demos =  os.listdir(self.data_dir)
+        try:
+            demos.remove('metrics_data.csv')
+        except:
+            pass
+        demos.sort(key=lambda x:int(x[5:]))
         self.data_list = []
         remove_list = ['traj.npy']
         for demo in demos:
             items = os.listdir(self.data_dir+"/"+demo)
+            items = [ x for x in items if x.isdigit() ]
+            items.sort(key=lambda x:int(x))
             for item in items:
                 robot_past_traj = self.data_dir+"/"+demo + '/' + item+"/robot_past_traj.npy"
                 # if item in remove_list:
                 #     continue
                 if not (os.path.exists(robot_past_traj)):
                     continue
-                file = open(self.data_dir+'/'+demo + '/rank.txt', 'r')
+                rank_path = self.data_dir+"/"+demo + '/new_rank.txt'
+                if not (os.path.exists(rank_path)):
+                    continue
+                file = open(self.data_dir+'/'+demo + '/new_rank.txt', 'r')
                 demo_rank = float(file.read())
-                if demo_rank <= 0.4:
+                if demo_rank <= 0.2:
                     continue
                 # if (self.check_isnone(self.data_dir + '/' + item)):
                 #     continue
@@ -124,8 +135,12 @@ class OffroadLoader(Dataset):
                 # if (self.check_isnone(self.data_dir + '/' + item)):
                 #     continue
                 __ = os.system("cp "+self.data_dir+"/"+demo + '/' + "traj.npy " + self.data_dir+"/"+demo + '/' + item)
-                __ = os.system("cp "+self.data_dir+"/"+demo + '/' + "rank.txt " + self.data_dir+"/"+demo + '/' + item)
+                __ = os.system("cp "+self.data_dir+"/"+demo + '/' + "new_rank.txt " + self.data_dir+"/"+demo + '/' + item)
+                __ = os.system("cp "+self.data_dir+"/"+demo + '/' + "crossing_count.txt " + self.data_dir+"/"+demo + '/' + item)
+                __ = os.system("cp "+self.data_dir+"/"+demo + '/' + "new_crossing_count.txt " + self.data_dir+"/"+demo + '/' + item)
+                
                 self.data_list.append(self.data_dir+"/"+demo + '/' + item)
+
 
         print(self.data_list)
         #self.data_normalization = sio.loadmat(datadir + '/irl_data/train-data-mean-std.mat')
@@ -203,6 +218,24 @@ class OffroadLoader(Dataset):
             temp_sink_feat[0, point[0], point[1]] = heading[1] + np.pi + 1.0
         return temp_sink_feat
 
+    def get_heading_feat_human(self,pos, heading):
+        temp_sink_feat = np.zeros([1,self.grid_size, self.grid_size])
+        radius_in_px = 2
+        human_points = self.points_inside_circle((pos[0], pos[1]), radius_in_px)
+        
+        for point in human_points:
+            temp_sink_feat[0, point[0], point[1]] = heading[1] + np.pi + 1.0
+        return temp_sink_feat
+
+    def get_vel_feat(self,pos, vel):
+        temp_sink_feat = np.zeros([1,self.grid_size, self.grid_size])
+        radius_in_px = 2
+        human_points = self.points_inside_circle((pos[0], pos[1]), radius_in_px)
+        
+        for point in human_points:
+            temp_sink_feat[0, point[0], point[1]] = vel * 3.0 + 1.0
+        return temp_sink_feat
+
     def get_goal_feat(self, goal_coords):
         temp_sink_feat = np.zeros([1,self.grid_size, self.grid_size])
         goal_points = self.points_inside_circle((goal_coords[0], goal_coords[1]), 2)
@@ -215,8 +248,11 @@ class OffroadLoader(Dataset):
     def __getitem__(self, index):
         self.image_fol = self.data_list[index]
         print(self.image_fol)
-        file = open(self.image_fol+ '/rank.txt', 'r')
+        file = open(self.image_fol+ '/new_rank.txt', 'r')
         demo_rank = float(file.read())
+        file = open(self.image_fol+ '/new_crossing_count.txt', 'r')
+        counter_crossing = int(file.read())
+        print("Crossing counter is " , counter_crossing)
         # goal_sink_feat = np.array(Image.open(self.image_fol+"/goal_sink.png")).T
         # goal_sink_feat = goal_sink_feat/255*np.ones(goal_sink_feat.shape)
         # temp_sink_feat = np.zeros([1,goal_sink_feat.shape[1], goal_sink_feat.shape[2]])
@@ -264,30 +300,26 @@ class OffroadLoader(Dataset):
         len, robot_traj = get_traj_length_unique(full_traj)
         
         # past_ind= np.where(robot_traj == robot_past_traj[-1])
-        past_ind = 0
-        for i in range(len[0]):
-            if (robot_traj[i] == robot_past_traj[-1]).all():
-                past_ind = i
-        temp = robot_traj
-        robot_traj = robot_traj[past_ind:]
-        
-        len = robot_traj.shape[0]
-        if len == 1:
-            robot_traj = np.vstack((robot_traj, np.array([robot_traj[0,0]-1, robot_traj[0,1]])))
         # print("Fial traj ", is_valid_traj(robot_traj))
-        if (not is_valid_traj(robot_traj)):
-            print(past_ind)
-            print(robot_past_traj[-1], robot_traj, len)
-            print(temp)
+        # if (not is_valid_traj(robot_traj)):
+        #     print(past_ind)
+        #     print(robot_past_traj[-1], robot_traj, len)
+        #     print(temp)
         # robot_past_traj = transpose_traj(robot_past_traj)
-        robot_pos = np.array([robot_traj[0,0], robot_traj[0,1]])
+        robot_pos = np.array([robot_past_traj[-1,0], robot_past_traj[-1,1]])
         human_pos = np.array([human_past_traj[-1,0], human_past_traj[-1,1]])
         heading_feat = self.get_heading_feat([robot_pos, human_pos], heading_angle)
+        # heading_feat = self.get_heading_feat_human([human_pos[0], human_pos[1]], heading_angle)
         goal_feat = None
         if os.path.exists(self.image_fol+"/goal.npy"):
             with open(self.image_fol+ "/goal.npy", 'rb') as f:
                 goal_coords = np.load(f)
             goal_feat = self.get_goal_feat(goal_coords)
+        if USE_VEL is True:
+            with open(self.image_fol+"/human_vel.npy", 'rb') as f:
+                vel = np.load(f)
+            vel_feat = self.get_vel_feat([human_pos[0], human_pos[1]], vel)
+            heading_feat = np.concatenate((heading_feat, vel_feat), axis = 0)
         # if len(human_past_traj) == 0:
         #     human_past_traj = np.array([human_future_traj[0]])
         # human_past_traj = np.append(human_past_traj, np.array([human_future_traj[0]]))
@@ -301,14 +333,25 @@ class OffroadLoader(Dataset):
         #     sdf_feat = np.load(f)
         # feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 0)
         ### Add the traj features 
-        robot_traj = self.auto_pad_future(robot_traj[:, :2])
+        robot_traj = self.auto_pad_future_from_past_counter(robot_traj[:, :2], robot_past_traj, counter_crossing)
         # human_past_traj = self.auto_pad_past(human_past_traj[:, :2]).T
         # robot_past_traj = self.auto_pad_past(robot_past_traj[:,:2]).T
+        # past_ind = 0
+        # for i in range(len[0]):
+        #     if (robot_traj[i] == robot_past_traj[-1]).all():
+        #         past_ind = i
+        # temp = robot_traj
+        # robot_traj = robot_traj[past_ind:]
+        
+        # len = robot_traj.shape[0]
+        # if len == 1:
+        #     robot_traj = np.vstack((robot_traj, np.array([robot_traj[0,0]-1, robot_traj[0,1]])))
+        
         human_traj_feature = np.zeros([1, semantic_img_feat.shape[1], semantic_img_feat.shape[2]])
         human_traj_feature[0,list(np.array(human_past_traj[:,0], np.int)), list(np.array(human_past_traj[:,1], np.int))] = 100
         # other_traj_feature = np.zeros(goal_sink_feat.shape)
         robot_traj_feature = np.zeros([1,semantic_img_feat.shape[1], semantic_img_feat.shape[2]])
-        robot_traj_feature[0,list(np.array(robot_past_traj[:,0], np.int)), list(np.array(robot_past_traj[:,1], np.int))] = 100
+        # robot_traj_feature[0,list(np.array(robot_past_traj[:,0], np.int)), list(np.array(robot_past_traj[:,1], np.int))] = 100
         # other_traj_feature[0,list(np.array(past_other_traj[:,0], np.int)), list(np.array(past_other_traj[:,1], np.int))] = 100
         # kin_feats = np.concatenate((self_traj_feature, ther_traj_feature), axis = 0)
         feat = np.concatenate((semantic_img_feat, human_traj_feature), axis = 0)
@@ -332,6 +375,7 @@ class OffroadLoader(Dataset):
             feat = np.concatenate((feat, goal_feat), axis = 0)
         human_past_traj = self.auto_pad_past(human_past_traj[:, :2]).T
         robot_past_traj = self.auto_pad_past(robot_past_traj[:,:2]).T
+        current_fol_number = int(self.image_fol.split('/')[-1])
         # future_other_traj = self.auto_pad_future(future_other_traj[:, :2])
         return feat, robot_traj, human_past_traj, robot_past_traj, demo_rank
 
@@ -345,16 +389,86 @@ class OffroadLoader(Dataset):
         :param traj: numpy array. (traj_len, 2)
         :return:
         """
-        fixed_len = self.grid_size
-        if traj.shape[0] >= self.grid_size:
-            traj = traj[traj.shape[0]-self.grid_size:, :]
+        fixed_len = self.grid_size*50
+        if traj.shape[0] >= fixed_len:
+            traj = traj[traj.shape[0]-fixed_len:, :]
             #raise ValueError('traj length {} must be less than grid_size {}'.format(traj.shape[0], self.grid_size))
-        pad_len = self.grid_size - traj.shape[0]
+        pad_len = fixed_len - traj.shape[0]
         pad_array = np.full((pad_len, 2), np.NaN)
-        output = np.vstack((traj, pad_array))
+        output = np.vstack((pad_array, traj))
         return output
 
-    def auto_pad_future(self, traj):
+
+    def auto_pad_future_from_past(self, traj, past_traj):
+        fixed_len = FIXED_LEN
+        past_len = past_traj.shape[0]
+        print("Past len is ", past_len)
+        
+        if traj.shape[0]-past_len<fixed_len:
+            if past_len<traj.shape[0]:
+                traj = traj[past_len:,:]
+            else:
+                traj = traj[-1:,:]
+            traj = traj.astype(int)
+            pad_len = fixed_len - traj.shape[0]    
+            pad_list = []
+            for i in range(int(np.ceil(pad_len))):
+                if (i < pad_len):
+                    pad_list.append([traj[-1,0], traj[-1,1]])
+                else:
+                    pad_list.append([np.NaN, np.NaN])
+            pad_array = np.array(pad_list[:pad_len])
+            if pad_len>0:
+                output = np.vstack((traj, pad_array))
+            else:
+                output = traj
+            return  output
+        traj = traj[past_len:past_len+fixed_len,:]
+        traj = traj.astype(int)
+        return traj
+
+    def auto_pad_future_from_past_counter(self, traj, past_traj, counter):
+        fixed_len = FIXED_LEN
+        past_len = past_traj.shape[0]
+        print("Past len is ", past_len)
+        counter_fol = self.data_dir+"/"+self.image_fol.split('/')[-2] + '/' + str(counter)
+        counter_fol_past_traj = np.load(counter_fol+"/robot_past_traj.npy")
+        counter_fol_past_traj = traj_interp(counter_fol_past_traj)
+        lengh, counter_fol_past_traj = get_traj_length_unique(counter_fol_past_traj)
+        counter_fol_past_len = counter_fol_past_traj.shape[0]
+        print("Counter past len is ", counter_fol_past_len)
+        current_fol_number = int(self.image_fol.split('/')[-1])
+        print("Folder splits are ",self.image_fol.split('/'))
+        print("Current fol number is ", current_fol_number)
+        if past_len<counter_fol_past_len:
+            traj = counter_fol_past_traj
+        if traj.shape[0]-past_len<fixed_len:
+            if past_len<traj.shape[0]:
+                traj = traj[past_len-1:,:]
+            else:
+                traj = traj[-1:,:]
+            traj = traj.astype(int)
+            pad_len = fixed_len - traj.shape[0]    
+            pad_list = []
+            for i in range(int(np.ceil(pad_len))):
+                if (i < pad_len):
+                    pad_list.append([traj[-1,0], traj[-1,1]])
+                else:
+                    pad_list.append([np.NaN, np.NaN])
+            pad_array = np.array(pad_list[:pad_len])
+            if pad_len>0:
+                output = np.vstack((traj, pad_array))
+            else:
+                output = traj
+            return  output
+        traj = traj[past_len:past_len+fixed_len,:]
+        traj = traj.astype(int)
+        if not is_valid_traj(traj):
+            print("Invalid traj ", traj, current_fol_number, counter)
+            # embed()
+        return traj
+
+    def auto_pad_future(self, traj, counter):
         """
         add padding (NAN) to traj to keep traj length fixed.
         traj shape needs to be fixed in order to use batch sampling
@@ -362,23 +476,54 @@ class OffroadLoader(Dataset):
         :return:
         """
         fixed_len = FIXED_LEN
-        if traj.shape[0] >= fixed_len:
-            traj = traj[:fixed_len, :]
+        current_fol_number = int(self.image_fol.split('/')[-1])
+        print("Current fol number is ", current_fol_number)
+        # if traj.shape[0] >= fixed_len:
+            # if current_fol_number+fixed_len>counter and current_fol_number<counter:
+            #     embed()
+            #     traj = traj[current_fol_number:counter,:]
+            #     pad_len = fixed_len - traj.shape[0]    
+            #     pad_list = []
+            #     for i in range(int(np.ceil(pad_len))):
+            #         if (i < pad_len):
+            #             # pad_list.append([(traj[-1,0]-1), traj[-1,1]])
+            #             pad_list.append([traj[-1,0], traj[-1,1]])
+            #         else:
+            #             pad_list.append([np.NaN, np.NaN])
+            #     # print(pad_list)
+            #     pad_array = np.array(pad_list[:pad_len])
+            #     if pad_len>0:
+            #         output = np.vstack((traj, pad_array))
+            #     else:
+            #         output = traj
+            #     return output
+
+        if current_fol_number+fixed_len <=traj.shape[0]:
+            if current_fol_number<counter and (traj[current_fol_number,:] == traj[counter,:]).all():
+                traj = np.ones((fixed_len, 2))*traj[current_fol_number,:].T
+                traj = traj.astype(int)
+                return traj
+            traj = traj[current_fol_number:current_fol_number+fixed_len,:]
             return traj
-            #raise ValueError('traj length {} must be less than grid_size {}'.format(traj.shape[0], self.grid_size))
-        pad_len = fixed_len - traj.shape[0]
-        
-        pad_list = []
-        for i in range(int(np.ceil(pad_len))):
-            if (i < pad_len):
-                # pad_list.append([(traj[-1,0]-1), traj[-1,1]])
-                pad_list.append([traj[-1,0], traj[-1,1]])
-            else:
-                pad_list.append([np.NaN, np.NaN])
-        # print(pad_list)
-        pad_array = np.array(pad_list[:pad_len])
-        if pad_len>0:
-            output = np.vstack((traj, pad_array))
         else:
-            output = traj
-        return output
+            # traj = np.ones((fixed_len, 2))*traj[current_fol_number,:].T
+            # traj = traj.astype(int)
+            # return traj
+            traj = traj[current_fol_number:traj.shape[0], :]
+            traj = traj.astype(int)
+            #raise ValueError('traj length {} must be less than grid_size {}'.format(traj.shape[0], self.grid_size))
+       
+            pad_len = fixed_len - traj.shape[0]    
+            pad_list = []
+            for i in range(int(np.ceil(pad_len))):
+                if (i < pad_len):
+                    # pad_list.append([(traj[-1,0]-1), traj[-1,1]])
+                    pad_list.append([traj[-1,0], traj[-1,1]])
+                else:
+                    pad_list.append([np.NaN, np.NaN])
+            pad_array = np.array(pad_list[:pad_len])
+            if pad_len>0:
+                output = np.vstack((traj, pad_array))
+            else:
+                output = traj
+            return  output
