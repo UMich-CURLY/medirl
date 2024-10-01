@@ -15,9 +15,13 @@ import os
 from maxent_irl_social import visualize_batch
 from network.reward_net import RewardNet
 from IPython import embed
+from PIL import Image, ImageFile
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import matplotlib.animation as animation
 # initialize param
 grid_size = 60
-
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 discount = 0.9
 batch_size = 3
 n_worker = 2
@@ -25,8 +29,8 @@ n_worker = 2
 #resume = 'step700-loss0.6980162681374217.pth'
 #net = HybridDilated(feat_out_size=25, regression_hidden_size=64)
 
-exp_name = '6.37robot'
-resume  = 'step8000-loss0.5276108335174007.pth'
+exp_name = '7.21robot'
+resume  = 'step600-loss1.915789041190336.pth'
 net = RewardNet(n_channels=7, n_classes=1, n_kin = 0)
 # self.net.init_weights()
 checkpoint = torch.load(os.path.join('exp', exp_name, resume))
@@ -152,10 +156,11 @@ def get_traj_length_unique(traj):
 
 def rl(traj_sample, r_sample, model, grid_size):
     svf_demo_sample = model.find_demo_svf(traj_sample)
-    values_sample = model.find_optimal_value(r_sample, 0.01)
+    values_sample = model.find_optimal_value(r_sample, 0.1)
     policy = model.find_stochastic_policy(values_sample, r_sample)
     ### Can change to sampling longer trajectories
     sampled_traj = model.traj_sample(policy, traj_sample.shape[0], traj_sample[0,0], traj_sample[0,1])
+    sampled_traj = model.traj_sample(policy, 20, traj_sample[0,0], traj_sample[0,1])
     svf_sample = model.find_svf(traj_sample, policy)
     svf_diff_sample = svf_demo_sample - svf_sample
     zeroing_loss = np.where(np.round(svf_sample+svf_demo_sample,3)>0.0, 1.0, 0.0)
@@ -198,34 +203,63 @@ def pred(feat, traj, net, n_states, model, grid_size):
 
 
 host = os.environ['HOSTNAME']
-vis = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8090)
+vis = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8092)
 model = offroad_grid.OffroadGrid(grid_size, discount)
 n_states = model.n_states
 n_actions = model.n_actions
 
 loader = OffroadLoader(grid_size=grid_size, train=False)
 loader = DataLoader(loader, num_workers=n_worker, batch_size=batch_size, shuffle=False)
+loss_cma = 0
+train_loss_win = vis.line(X=np.array([-1]), Y=np.array([loss_cma]),
+                         opts=dict(xlabel='steps', ylabel='loss', title='train loss'))
+def compute_return(reward, traj):
+        total_reward = 0
+        discount = 1
+        for xy in traj:
+            total_reward += discount * reward[:, xy[0], xy[1]]
+            discount *= 0.9
+        #total_reward = total_reward / traj.shape[0] * 100
 
+        return total_reward
 
 net.eval()
 
 nll_test_list_robot = []
 test_dist_list = []
 step = 1
-for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank) in enumerate(loader):
+returns_list = []
+im_array = []
+plt_frames = []
+for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weights,  full_trajs) in enumerate(loader):
     # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, past_traj_r)
     # if not np.isnan(prev_predicted_traj_human[start_full_index:end_full_index].all()):
     #     if not np.isnan(prev_past_traj_human[start_full_index:end_full_index]).all():
     #         feat_r[:,5,:] = get_traj_feature(feat_r[:,0], grid_size, prev_past_traj_human[start_full_index:end_full_index], prev_predicted_traj_human[start_full_index:end_full_index])
     feat_r[:,3,:] = get_traj_feature(feat_r[:,0], grid_size, human_past_traj)
+    # traj_lower = full_trajs[:, 4].numpy()
+    # traj_lower = traj_lower[~np.isnan(traj_lower).any(axis=1)]  # remove appended NAN rows
+    # traj_lower = traj_lower.astype(np.int64)
+    # traj_upper = full_trajs[:, 8].numpy()
+    # traj_upper = traj_upper[~np.isnan(traj_upper).any(axis=1)]  # remove appended NAN rows
+    # traj_upper = traj_upper.astype(np.int64)
+    
     # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, robot_past_traj)
     # feat_h[:,4,:] = get_traj_feature(feat_h[:,0], grid_size, past_traj_h)
     # if not np.isnan(prev_predicted_traj_robot[start_full_index:end_full_index]).all():
     #     if not np.isnan(prev_past_traj_robot[start_full_index:end_full_index]).all():
     #         feat_h[:,5,:] = get_traj_feature(feat_h[:,0], grid_size, prev_past_traj_robot[start_full_index:end_full_index], prev_predicted_traj_robot[start_full_index:end_full_index])
     # feat_h[:,4,:] = get_traj_feature(feat_h[:,0], grid_size, past_traj_r, future_traj_r)
-    print("Feat is ", feat_r.shape)
+    print("Step is ", step)
     tmp_nll_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, zeroing_loss_r = pred(feat_r, robot_traj, net, n_states, model, grid_size)
+    for i in range(feat_r.shape[0]):
+        # expected_return_lower = compute_return(r_var_r[i], traj_lower[i].type(torch.LongTensor))
+        # expected_return_upper = compute_return(r_var_r[i], traj_upper[i].type(torch.LongTensor))
+        expected_return_current = compute_return(r_var_r[i], np.array(sampled_trajs_r[i]))
+        # returns_list.append([expected_return_lower, expected_return_upper, expected_return_current])
+        # print("Expected return lower is ", expected_return_lower)
+        # print("Expected return upper is ", expected_return_upper)
+        print("Expected return current is ", expected_return_current)
     r_vars_zeroed = r_var_r.clone()
     r_vars_zeroed = r_vars_zeroed*zeroing_loss_r
 
@@ -235,11 +269,49 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank) in e
     for i in range(len(c_zero)):
         grad_zeroed[i] = c_zero[i]*(torch.ones(zeroing_loss_r[i].shape)-zeroing_loss_r[i])
     # traj_rank_weight = normalize_rank(demo_rank)
+    c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
+        # c_zero = np.zeros(c_zero.shape)
+    for i in range(len(c_zero)):
+        zeroing_loss_r[i] = c_zero[i]*zeroing_loss_r[i]
+    zeroing_loss_criterion = zeroing_loss_r.mean()
     print("Demo rank is ", demo_rank)
     nll_test_list_robot += tmp_nll_r
+    loss = [zeroing_loss_criterion]
     if step % 2 == 0:
-        visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, r_vars_zeroed, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r, rank_list= demo_rank)
+        visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, zeroing_loss_r, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r, rank_list= demo_rank)
+    vis.line(X=np.array([step]), Y=np.array([loss]), win=train_loss_win, update='append')
+    print("Loss is ", loss) 
     step += 1
+    traj_final = sampled_trajs_r[0]
+    img = feat_r[:,0:3].numpy()
+    img = img[0]
+    data = img[0]
+    for i in range(len(traj_final)):
+        data[int(traj_final[i][0]), int(traj_final[i][1])] = 4.0
+
+    fig = plt.figure(figsize=(6, 6))
+    plt.imshow(data, cmap='hot', interpolation='nearest')
+    plt.colorbar()  # Optional: Add a colorbar to the side
+
+    # Save the heatmap to a temporary file
+    plt.savefig('heatmap_temp.png', bbox_inches='tight')
+    plt.close()  # Close the plot to free memory
+
+# Open the saved image using PIL
+    img = Image.open('heatmap_temp.png')
+
+    # for i in range(len(traj_final)):
+    #     img.putpixel((int(traj_final[i][0])*10, int(traj_final[i][1])*10), (255,0,0))
+    # img.save('heatmap_temp_traj.png')
+    im_array.append(img)
+    plt_frames.append([plt.imshow(data, cmap='hot', interpolation='nearest', animated=True)])
+
+ani = animation.ArtistAnimation(fig, plt_frames, interval=50, blit=True,
+                                repeat_delay=1000)
+im_array[0].save('robot_traj.gif', save_all=True, append_images=im_array[1:])
+embed()
+ani.save("robot_traj.mp4")
+
 nll_test_robot = sum(nll_test_list_robot) / len(nll_test_list_robot)
 print('main. test nll {}'.format(nll_test_robot))
 visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, r_vars_zeroed, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r)

@@ -325,7 +325,7 @@ for epoch in range(n_epoch):
             net_robot.eval()
             nll_test_list_human = []
             nll_test_list_robot = []
-            for test_index, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank) in enumerate(test_loader_robot):
+            for test_index, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, full_trajs) in enumerate(test_loader_robot):
                 # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, past_traj_r)
                 # if not np.isnan(prev_predicted_traj_human[start_full_index:end_full_index].all()):
                 #     if not np.isnan(prev_past_traj_human[start_full_index:end_full_index]).all():

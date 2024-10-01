@@ -113,13 +113,13 @@ def rl(traj_sample, r_sample, model, grid_size):
     values_sample = model.find_optimal_value(r_sample, 0.1)
     policy = model.find_stochastic_policy(values_sample, r_sample)
     ### Can change to sampling longer trajectories
-    sampled_traj = model.traj_sample(policy, traj_sample.shape[0], traj_sample[0,0], traj_sample[0,1])
+    # sampled_traj = model.traj_sample(policy, traj_sample.shape[0], traj_sample[0,0], traj_sample[0,1])
+    sampled_traj = model.traj_sample(policy, 20, traj_sample[0,0], traj_sample[0,1])
     svf_sample = model.find_svf(traj_sample, policy)
     svf_diff_sample = svf_demo_sample - svf_sample
-    print("Shapes are ", svf_demo_sample.shape, svf_sample.shape)
-    zeroing_loss = np.where(np.round(svf_sample+svf_demo_sample,3)>0.0, 1.0, 0.0)
-    zeroing_loss = zeroing_loss.astype(np.float32)
-    
+    # zeroing_loss = np.where(np.round(svf_sample+svf_demo_sample,3)>0.0, 1.0, 0.0)
+    # zeroing_loss = zeroing_loss.astype(np.float32)
+    zeroing_loss = (svf_demo_sample + svf_sample).astype(np.float32)
     expected_return = model.compute_return(r_sample, traj_sample)
     expected_return_sample = np.array([expected_return])
     expected_return_var_sample = Variable(torch.from_numpy(expected_return_sample).float())
@@ -133,19 +133,24 @@ def rl(traj_sample, r_sample, model, grid_size):
     return nll_sample, svf_diff_var_sample, values_sample, sampled_traj, expected_return_var_sample, zeroing_loss_var_sample
 
 
-def pred(feat, traj, net, n_states, model, grid_size):
+def pred(feat, traj, net, n_states, model, grid_size, full_trajs):
     n_sample = feat.shape[0]
     feat = feat.float()
     feat_var = Variable(feat)
     r_var = net(feat_var)
     result = []
+    result_2 = []
     pool = Pool(processes=n_sample)
     for i in range(n_sample):
         r_sample = r_var[i].data.numpy().squeeze().reshape(n_states)
         traj_sample = traj[i].numpy()  # choose one sample from the batch
         traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
         traj_sample = traj_sample.astype(np.int64)
+        trajs = full_trajs[i].numpy()
+        # trajs = trajs[~np.isnan(trajs).any(axis=1)]  # remove appended NAN rows
+        # trajs = trajs.astype(np.int64)
         result.append(pool.apply_async(rl, args=(traj_sample, r_sample, model, grid_size)))
+        result_2.append(pool.apply_async(get_returns, args=(trajs, r_sample, model)))
     pool.close()
     pool.join()
     # extract result and stack svf_diff
@@ -154,13 +159,29 @@ def pred(feat, traj, net, n_states, model, grid_size):
     svf_diff_var_list = [result[i].get()[1] for i in range(n_sample)]
     values_list = [result[i].get()[2] for i in range(n_sample)]
     policy_sample_list = [result[i].get()[3] for i in range(n_sample)]
-    expected_return_list = [result[i].get()[4] for i in range(n_sample)]
+    expected_return_list = [result_2[i].get()[0] for i in range(n_sample)]
     zeroing_loss_return_list = [result[i].get()[5] for i in range(n_sample)]
     svf_diff_var = torch.cat(svf_diff_var_list, dim=0)
-    expected_return = torch.cat(expected_return_list, dim=0)
+    expected_return = torch.cat(expected_return_list, dim=1)
     zeroing_loss = torch.cat(zeroing_loss_return_list)
     return nll_list, r_var, svf_diff_var, values_list, policy_sample_list, expected_return, zeroing_loss
 
+def get_returns(traj_samples, r_sample, model):
+    expected_returns = np.zeros((9, 1))
+    i = 0
+    for traj_sample in traj_samples:
+        traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
+        traj_sample = traj_sample.astype(np.int64)
+        # print("Traj sample is ", traj_sample)
+        if len(traj_sample) == 0:
+            expected_returns[i] = 0.0
+            i += 1
+            continue
+        expected_returns[i] = model.compute_return(r_sample, traj_sample)
+        i += 1
+    expected_return_sample = np.array([expected_returns])
+    expected_return_var_sample = Variable(torch.from_numpy(expected_return_sample).float())
+    return expected_return_var_sample
 
 ### No multi processing for this one 
 # def pred(feat, traj, net, n_states, model, grid_size):

@@ -37,8 +37,8 @@ torch.set_default_tensor_type('torch.DoubleTensor')
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 import ros_numpy
 resume = None
-exp_name = '6.37robot'
-resume  = 'step8000-loss0.5276108335174007.pth'
+exp_name = '7.21robot'
+resume  = 'step600-loss1.915789041190336.pth'
 GRID_RESOLUTION = 0.1
 CLEARANCE_THRESH = 0.5/GRID_RESOLUTION
 GRID_SIZE_IN_M = 6
@@ -68,6 +68,15 @@ def get_heading_feat(pos, heading):
         temp_sink_feat[0, point[0], point[1]] = heading[0] + np.pi + 1.0
     for point in human_points:
         temp_sink_feat[0, point[0], point[1]] = heading[1] + np.pi + 1.0
+    return torch.from_numpy(temp_sink_feat)
+
+def get_heading_human_feat(pos, heading):
+    temp_sink_feat = np.zeros([1,grid_size, grid_size])
+    radius_in_px = 2
+    human_points = points_inside_circle((pos[0], pos[1]), radius_in_px)
+    
+    for point in human_points:
+        temp_sink_feat[0, point[0], point[1]] = heading + np.pi + 1.0
     return torch.from_numpy(temp_sink_feat)
 
 def get_vel_feat(pos, vel):
@@ -296,6 +305,8 @@ class irl():
             mutex.release()
             # embed()
             return 
+        
+        print("Made it past atleast once")
         feat = torch.empty((1,7, grid_size, grid_size), dtype=torch.float64)
         # for step, (feat, robot_traj, human_past_traj, robot_past_traj)  in enumerate(self.loader):
         start = time.time()
@@ -338,7 +349,11 @@ class irl():
         feat[:,0:3,:] = torch.from_numpy(semantic_img_feat)
         feat[:,3,:] = get_traj_feature(feat[:,0], grid_size, [self.human_traj])
         print("Get heading of ", [self.robot_traj, self.human_traj[0]])
-        feat[:,4,:] = get_heading_feat([self.robot_traj, self.human_traj[0]], [self.robot_angle, self.human_angle])
+        # feat[:,4,:] = get_heading_feat([self.robot_traj, self.human_traj[0]], [self.robot_angle, self.human_angle])
+        if feat.shape[1] == 5:
+            feat[:,4,:] = get_goal_feat(self.robot_goal)
+        else:
+            feat[:,4,:] = get_heading_human_feat(self.human_traj[0], self.human_angle)
         if feat.shape[1] == 6:
             feat[:,5,:] = get_goal_feat(self.robot_goal)
         if feat.shape[1] == 7:
@@ -349,9 +364,9 @@ class irl():
         r_var = self.net(feat)
         r_sample = r_var[0].data.numpy().squeeze().reshape(self.n_states) 
         recalculate = True
-        if self.prev_reward is not None:
-            if np.allclose(self.prev_reward, r_sample, atol=0.1) and (self.prev_robot_pose == self.robot_traj).all():
-                recalculate = False
+        # if self.prev_reward is not None:
+        #     if np.allclose(self.prev_reward, r_sample, atol=0.1) and (self.prev_robot_pose == self.robot_traj).all():
+        #         recalculate = False
         if recalculate:
             self.prev_reward = r_sample.copy()   
             values_sample = self.model.find_optimal_value(r_sample, 0.1)
