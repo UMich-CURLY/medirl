@@ -21,7 +21,7 @@ import matplotlib.cm as cm
 import matplotlib.animation as animation
 # initialize param
 grid_size = 60
-ImageFile.LOAD_TRUNCATED_IMAGES = True
+# ImageFile.LOAD_TRUNCATED_IMAGES = True
 discount = 0.9
 batch_size = 3
 n_worker = 2
@@ -29,8 +29,8 @@ n_worker = 2
 #resume = 'step700-loss0.6980162681374217.pth'
 #net = HybridDilated(feat_out_size=25, regression_hidden_size=64)
 
-exp_name = '7.21robot'
-resume  = 'step600-loss1.915789041190336.pth'
+exp_name = '7.22robot'
+resume  = 'step1100-loss3.6357411377145046.pth'
 net = RewardNet(n_channels=7, n_classes=1, n_kin = 0)
 # self.net.init_weights()
 checkpoint = torch.load(os.path.join('exp', exp_name, resume))
@@ -48,6 +48,16 @@ net.load_state_dict(checkpoint['net_state'])
 #     nll_sample = model.compute_nll(policy, future_traj_sample)
 #     dist_sample = model.compute_hausdorff_loss(policy, future_traj_sample, n_samples=1000)
 #     return nll_sample, svf_diff_var_sample, values_sample, dist_sample
+
+def make_plot_and_save(data, filename):
+    fig = plt.figure(figsize=(6, 6))
+    plt.imshow(data, cmap='hot', interpolation='nearest')
+    plt.colorbar()  # Optional: Add a colorbar to the side
+
+    # Save the heatmap to a temporary file
+    plt.savefig('heatmap_temp.png', bbox_inches='tight')
+    plt.close()  # Close the plot to free memory
+    return
 
 def get_traj_feature(goal_sink_feat, grid_size, past_traj, future_traj = None):
     feat = np.zeros(goal_sink_feat.shape)
@@ -208,7 +218,7 @@ model = offroad_grid.OffroadGrid(grid_size, discount)
 n_states = model.n_states
 n_actions = model.n_actions
 
-loader = OffroadLoader(grid_size=grid_size, train=False)
+loader = OffroadLoader(grid_size=grid_size, train=True)
 loader = DataLoader(loader, num_workers=n_worker, batch_size=batch_size, shuffle=False)
 loss_cma = 0
 train_loss_win = vis.line(X=np.array([-1]), Y=np.array([loss_cma]),
@@ -277,7 +287,7 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     print("Demo rank is ", demo_rank)
     nll_test_list_robot += tmp_nll_r
     loss = [zeroing_loss_criterion]
-    if step % 2 == 0:
+    if step % 1 == 0:
         visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, zeroing_loss_r, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r, rank_list= demo_rank)
     vis.line(X=np.array([step]), Y=np.array([loss]), win=train_loss_win, update='append')
     print("Loss is ", loss) 
@@ -289,13 +299,7 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     for i in range(len(traj_final)):
         data[int(traj_final[i][0]), int(traj_final[i][1])] = 4.0
 
-    fig = plt.figure(figsize=(6, 6))
-    plt.imshow(data, cmap='hot', interpolation='nearest')
-    plt.colorbar()  # Optional: Add a colorbar to the side
-
-    # Save the heatmap to a temporary file
-    plt.savefig('heatmap_temp.png', bbox_inches='tight')
-    plt.close()  # Close the plot to free memory
+    make_plot_and_save(data, 'heatmap_temp.png')
 
 # Open the saved image using PIL
     img = Image.open('heatmap_temp.png')
@@ -304,13 +308,12 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     #     img.putpixel((int(traj_final[i][0])*10, int(traj_final[i][1])*10), (255,0,0))
     # img.save('heatmap_temp_traj.png')
     im_array.append(img)
-    plt_frames.append([plt.imshow(data, cmap='hot', interpolation='nearest', animated=True)])
+    # plt_frames.append([plt.imshow(data, cmap='hot', interpolation='nearest', animated=True)])
 
-ani = animation.ArtistAnimation(fig, plt_frames, interval=50, blit=True,
-                                repeat_delay=1000)
+# ani = animation.ArtistAnimation(fig, plt_frames, interval=50, blit=True,
+#                                 repeat_delay=1000)
 im_array[0].save('robot_traj.gif', save_all=True, append_images=im_array[1:])
-embed()
-ani.save("robot_traj.mp4")
+# ani.save("robot_traj.mp4")
 
 nll_test_robot = sum(nll_test_list_robot) / len(nll_test_list_robot)
 print('main. test nll {}'.format(nll_test_robot))

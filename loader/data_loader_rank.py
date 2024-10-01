@@ -195,12 +195,21 @@ class OffroadLoader(Dataset):
                 keep_it = False
                 for crossing in counter_crossing_data:
                     if int(item) <= int(crossing)+5 and int(item) >= int(crossing)-5:
+                        weight = 1.0
+                        with open(self.data_dir+"/"+demo + '/' + item + '/weight.txt', 'w') as f:
+                            f.write(str(weight))
+                            f.close()
                         keep_it = True
-                if (int(item) %5 != 0 and not keep_it) or int(item) > int(items[-1])-4:
+                    else:
+                        weight = 0.2
+                        with open(self.data_dir+"/"+demo + '/' + item + '/weight.txt', 'w') as f:
+                            f.write(str(weight))
+                            f.close()
+                if (int(item) %2 != 0 and not keep_it) or int(item) > int(items[-1])-4:
                     continue
                 if int(item) == 0:
                     continue
-
+                
                 robot_past_traj = self.data_dir+"/"+demo + '/' + item+"/robot_past_traj.npy"
                 # if item in remove_list:
                 #     continue

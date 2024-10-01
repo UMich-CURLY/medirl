@@ -13,3 +13,4 @@ exp/
 .ipython/
 .bash_history
 *.log
+*.code-workspace
