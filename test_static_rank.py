@@ -29,8 +29,8 @@ n_worker = 2
 #resume = 'step700-loss0.6980162681374217.pth'
 #net = HybridDilated(feat_out_size=25, regression_hidden_size=64)
 
-exp_name = '7.22robot'
-resume  = 'step1100-loss3.6357411377145046.pth'
+exp_name = '7.25robot'
+resume  = 'step3800-loss1.8825305944937367.pth'
 net = RewardNet(n_channels=7, n_classes=1, n_kin = 0)
 # self.net.init_weights()
 checkpoint = torch.load(os.path.join('exp', exp_name, resume))
@@ -218,7 +218,7 @@ model = offroad_grid.OffroadGrid(grid_size, discount)
 n_states = model.n_states
 n_actions = model.n_actions
 
-loader = OffroadLoader(grid_size=grid_size, train=True)
+loader = OffroadLoader(grid_size=grid_size, train=False)
 loader = DataLoader(loader, num_workers=n_worker, batch_size=batch_size, shuffle=False)
 loss_cma = 0
 train_loss_win = vis.line(X=np.array([-1]), Y=np.array([loss_cma]),

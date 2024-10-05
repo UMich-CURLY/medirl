@@ -20,6 +20,7 @@ USE_GOAL = True
 FIXED_LEN = 20
 USE_VEL = True
 USE_HEADING = True
+NUMBER_OF_NOISE_SAMPLES = 6
 def transpose_traj(traj):
     for i in range(traj.shape[0]):
         temp = traj[i,0] 
@@ -124,7 +125,7 @@ def traj_interp(c):
     return np.array(d)
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3_new_cross', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
@@ -176,6 +177,7 @@ class OffroadLoader(Dataset):
             items = os.listdir(self.data_dir+"/"+demo)
             items = [ x for x in items if x.isdigit() ]
             items.sort(key=lambda x:int(x))
+
             with open(self.data_dir+"/"+demo + "/traj.npy", 'rb') as f:
                 full_traj = np.load(f)
             full_traj = remove_oscilations(full_traj)
@@ -243,6 +245,11 @@ class OffroadLoader(Dataset):
                 self.data_list.append(self.data_dir+"/"+demo + '/' + item)
 
         print(self.data_list)
+        ##### Use noisy demos #####
+        if train:
+            self.noise_data_counter = len(self.data_list)
+            self.data_list = self.data_list*(NUMBER_OF_NOISE_SAMPLES+1)
+        
         #self.data_normalization = sio.loadmat(datadir + '/irl_data/train-data-mean-std.mat')
         self.pre_train = pre_train
         # kinematic related feature
@@ -541,8 +548,39 @@ class OffroadLoader(Dataset):
                     continue
                 one_hot_rank = int(demo_rank_full*10)
                 full_traj_array[one_hot_rank-2] = robot_traj_full
+            if item_num > self.noise_data_counter:
+                noise_num = item_num//self.noise_data_counter
+                if noise_num == 0:
+                    traj_folder = self.image_fol+"/robot_noise_traj.npy"
+                else:
+                    traj_folder = self.image_fol+"/robot_noise_traj"+str(noise_num-1)+".npy"
+                try:
+                    with open(traj_folder, 'rb') as f:
+                        full_traj_argh = np.load(f)
+                   
+                
+                    # robot_traj = transpose_traj(full_traj).astype(np.float32)
+                    bs, robot_traj_grid = get_traj_length_unique_actual(full_traj_argh)
+                    robot_traj_grid = transpose_traj(robot_traj_grid).astype(np.float64)
+                    if len(robot_traj_grid) <FIXED_LEN:
+                        for i in range(FIXED_LEN - len(robot_traj_grid)):
+                            robot_traj_grid = np.insert(robot_traj_grid, len(robot_traj_grid), robot_traj_grid[-1,:], axis=0)
+                    robot_traj_grid = robot_traj_grid[:FIXED_LEN]
+                    # robot_traj = robot_traj_grid
+                    # print("Now robot traj is ", robot_traj.shape)
+                    human_past_traj = self.auto_pad_past(human_past_traj[:, :2]).T
+                    robot_past_traj = self.auto_pad_past(robot_past_traj[:,:2]).T
+                    print("robot traj gris dtype ", robot_traj_grid.dtype, type(robot_traj_grid))
+                    return feat, robot_traj_grid, human_past_traj, robot_past_traj, demo_rank, weight, full_traj_array
+                except:
+                    print("Did not find a noisy demo")
+                    print("robot traj dtype ", robot_traj.dtype, type(robot_traj))
+                
+                
         human_past_traj = self.auto_pad_past(human_past_traj[:, :2]).T
         robot_past_traj = self.auto_pad_past(robot_past_traj[:,:2]).T
+    
+    
         # future_other_traj = self.auto_pad_future(future_other_traj[:, :2])
         return feat, robot_traj, human_past_traj, robot_past_traj, demo_rank, weight, full_traj_array
 

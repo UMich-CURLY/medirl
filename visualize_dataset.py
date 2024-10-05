@@ -35,7 +35,7 @@ batch_size = 8
 n_worker = 2
 use_gpu = True
 assert grid_size % 2 == 0, "grid size must be even number"
-data_dir = "data/irl_sept_24_3/train"
+data_dir = "data/irl_sept_24_3/test"
 demos =  os.listdir(data_dir)
 demos.remove('metrics_data.csv')
 demos.sort(key=lambda x:int(x[5:]))
@@ -124,7 +124,6 @@ for demo in demos:
     img_callback_win = vis.image(img.T, opts= dict(caption='count {}, item {}, succ {} '.format(item,demo, metric["social_nav_to_pos_success"])))
             
 
-    print("Vels are ", vels)
     started = False
     counter_stop = 0
     potential_crossing = 0
@@ -151,7 +150,7 @@ for demo in demos:
         if robot_vel != 0.0 and same_stop is True:
             same_stop = False
             # print("Writing potential crossing at ", potential_crossing)
-            if counter_stop > 3:
+            if counter_stop > 15:
                 counter_cross.append(counter-1)
         counter += 1
     counter_cross.append(counter-2)

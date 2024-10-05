@@ -37,8 +37,8 @@ torch.set_default_tensor_type('torch.DoubleTensor')
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 import ros_numpy
 resume = None
-exp_name = '7.22robot'
-resume  = 'step1100-loss3.6357411377145046.pth'
+exp_name = '7.24robot'
+resume  = 'step2100-loss3.325062816979464.pth'
 GRID_RESOLUTION = 0.1
 CLEARANCE_THRESH = 0.5/GRID_RESOLUTION
 GRID_SIZE_IN_M = 6

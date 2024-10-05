@@ -41,11 +41,10 @@ batch_size = 1
 n_worker = 2
 use_gpu = True
 print("Train loader")
-train_loader_robot = OffroadLoader(grid_size=grid_size, tangent=False, train = True)
+train_loader_robot = OffroadLoader(grid_size=grid_size, tangent=False, train = False)
 train_loader_robot = DataLoader(train_loader_robot, num_workers=n_worker, batch_size=batch_size, shuffle=False)
 
-
-
+embed()
 host = os.environ['HOSTNAME']
 vis = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8093)
 counter = 0
@@ -75,7 +74,7 @@ for index, (feat, robot_traj, human_past_traj, robot_past_traj, demo_rank, weigh
     item = int(image_fol.split('/')[-1])
     demo = image_fol.split('/')[-2]
     if prev_demo != demo:
-        embed()
+        # embed()
         prev_demo = demo    
     traj_sample = robot_traj[0].numpy()
     traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
