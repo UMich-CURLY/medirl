@@ -282,7 +282,7 @@ for epoch in range(n_epoch):
         zeroing_loss_criterion = zeroing_loss_r.mean()
         # zeroing_loss_full = Variable(zeroing_loss_criterion, requires_grad=True)
         # zeroing_loss_full.backward()
-        torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float())])  # to maximize, hence add minus sign
+        # torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float())])  # to maximize, hence add minus sign
         one_hot_rank = torch.zeros((len(demo_rank)), dtype= torch.long)
         for i in range(len(demo_rank)):
             one_hot_rank[i] = int(demo_rank[i]*10)-2
