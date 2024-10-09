@@ -386,7 +386,7 @@ for epoch in range(n_epoch):
                 best_test_nll_robot = nll_test_robot
             state = {'nll_cma': nll_cma_robot, 'test_nll': nll_test_robot, 'step': step, 'net_state': net_robot.state_dict(),
                         'opt_state': opt_robot.state_dict(), 'discount':discount}
-            path = os.path.join('exp', exp_name+"robot", 'step{}-loss{}.pth'.format(step, nll_test_robot))
+            path = os.path.join('exp', exp_name+"robot", 'step{}-loss{}-train_loss.pth'.format(step, np.round(nll_test_robot,4), np.round(nll_cma_robot,4)))
             torch.save(state, path)
 
         step += 1
