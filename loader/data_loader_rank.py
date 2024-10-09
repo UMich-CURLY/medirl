@@ -20,7 +20,7 @@ USE_GOAL = True
 FIXED_LEN = 20
 USE_VEL = True
 USE_HEADING = True
-NUMBER_OF_NOISE_SAMPLES = 6
+NUMBER_OF_NOISE_SAMPLES = 1
 def transpose_traj(traj):
     for i in range(traj.shape[0]):
         temp = traj[i,0] 
