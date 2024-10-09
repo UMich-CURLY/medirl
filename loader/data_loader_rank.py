@@ -558,25 +558,25 @@ class OffroadLoader(Dataset):
                 try:
                     with open(traj_folder, 'rb') as f:
                         full_traj_argh = np.load(f)
-                   
+                    # robot_traj = transpose_traj(full_traj).astype(np.float32)
+                    bs, robot_traj_grid = get_traj_length_unique_actual(full_traj_argh)
+                    robot_traj_grid = transpose_traj(robot_traj_grid).astype(np.float64)
+                    if len(robot_traj_grid) <FIXED_LEN:
+                        for i in range(FIXED_LEN - len(robot_traj_grid)):
+                            robot_traj_grid = np.insert(robot_traj_grid, len(robot_traj_grid), robot_traj_grid[-1,:], axis=0)
+                    robot_traj_grid = robot_traj_grid[:FIXED_LEN]
+                    # robot_traj = robot_traj_grid
+                    # print("Now robot traj is ", robot_traj.shape)
+                    human_past_traj = self.auto_pad_past(human_past_traj[:, :2]).T
+                    robot_past_traj = self.auto_pad_past(robot_past_traj[:,:2]).T
+                    print("robot traj gris dtype ", robot_traj_grid.dtype, type(robot_traj_grid))
+                    return feat, robot_traj_grid, human_past_traj, robot_past_traj, demo_rank, weight, full_traj_array
+                
                 
                     
                 except:
                     print("Did not find a noisy demo")
                     print("robot traj dtype ", robot_traj.dtype, type(robot_traj))
-                # robot_traj = transpose_traj(full_traj).astype(np.float32)
-                bs, robot_traj_grid = get_traj_length_unique_actual(full_traj_argh)
-                robot_traj_grid = transpose_traj(robot_traj_grid).astype(np.float64)
-                if len(robot_traj_grid) <FIXED_LEN:
-                    for i in range(FIXED_LEN - len(robot_traj_grid)):
-                        robot_traj_grid = np.insert(robot_traj_grid, len(robot_traj_grid), robot_traj_grid[-1,:], axis=0)
-                robot_traj_grid = robot_traj_grid[:FIXED_LEN]
-                # robot_traj = robot_traj_grid
-                # print("Now robot traj is ", robot_traj.shape)
-                human_past_traj = self.auto_pad_past(human_past_traj[:, :2]).T
-                robot_past_traj = self.auto_pad_past(robot_past_traj[:,:2]).T
-                print("robot traj gris dtype ", robot_traj_grid.dtype, type(robot_traj_grid))
-                return feat, robot_traj_grid, human_past_traj, robot_past_traj, demo_rank, weight, full_traj_array
                 
         human_past_traj = self.auto_pad_past(human_past_traj[:, :2]).T
         robot_past_traj = self.auto_pad_past(robot_past_traj[:,:2]).T
