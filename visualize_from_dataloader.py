@@ -41,7 +41,7 @@ batch_size = 1
 n_worker = 2
 use_gpu = True
 print("Train loader")
-train_loader_robot = OffroadLoader(grid_size=grid_size, tangent=False, train = False)
+train_loader_robot = OffroadLoader(grid_size=grid_size, tangent=False, train = True)
 train_loader_robot = DataLoader(train_loader_robot, num_workers=n_worker, batch_size=batch_size, shuffle=False)
 
 embed()
@@ -73,31 +73,47 @@ for index, (feat, robot_traj, human_past_traj, robot_past_traj, demo_rank, weigh
     print("Out here image fol is ", image_fol)
     item = int(image_fol.split('/')[-1])
     demo = image_fol.split('/')[-2]
+    file = open(image_fol+ '/new_crossing_count.txt', 'r')
+    counter_crossing_data = file.read().split('\n')
+    number_of_stops = len(counter_crossing_data)
+    current_fol_number = int(image_fol.split('/')[-1])
+    # print("Number of stops ", number_of_stops, counter_crossing_data)
+    for counter_crossing in counter_crossing_data:
+        counter_crossing = int(counter_crossing)
+        if counter_crossing >= current_fol_number:
+            break 
     if prev_demo != demo:
-        # embed()
+        embed()
         prev_demo = demo    
     traj_sample = robot_traj[0].numpy()
     traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows
     traj_sample = traj_sample.astype(np.int64)
     human_pos = human_past_traj[0,:,-1].numpy()
     min_dist = 1000
-    for point in traj_sample:
-        dist = np.linalg.norm(human_pos - point, axis=0)
-        min_dist = min(min_dist, dist)
-    weight = 6.0-min_dist*0.1
-    min_dist = min_dist*0.1
-    if min_dist <1.0:
-        weight = 1.0
-    else:
-        weight = 0.7
-    with open(image_fol + '/weight.txt', 'w') as f:
-        f.write(str(weight))
-        f.close()
+    # for point in traj_sample:
+    #     dist = np.linalg.norm(human_pos - point, axis=0)
+    #     min_dist = min(min_dist, dist)
+    # weight = 6.0-min_dist*0.1
+    # min_dist = min_dist*0.1
+    # if min_dist <1.0:
+    #     weight = 1.0
+    # else:
+    #     weight = 0.7
+    # with open(image_fol + '/weight.txt', 'w') as f:
+    #     f.write(str(weight))
+    #     f.close()
     if len(traj_sample) == 0:
         continue
     overlay_map = feat[0, 1, :, :].float().view(grid_size, -1).numpy()  # (grid_size, grid_size)
     overlay_map = overlay_traj_to_map(traj_sample, overlay_map)
-    if counter % vis_per_steps == 0:
+    # if counter % vis_per_steps == 0:
+    visualize_counter = False
+    for counter_crossing in counter_crossing_data:
+        counter_crossing = int(counter_crossing)
+        if abs(current_fol_number-counter_crossing)<5:
+            visualize_counter = True
+            break
+    if visualize_counter:
         overlay_map = feat[0, 1, :, :].float().view(grid_size, -1).numpy()  # (grid_size, grid_size)
         overlay_map = overlay_traj_to_map(traj_sample, overlay_map)
         vis.heatmap(X=overlay_map,

@@ -38,21 +38,21 @@ def check_neighbor(first, second):
     
 
 def remove_oscilations(traj):
-    already_done = []
-    current_targ_list = []
-    for i in range(len(traj)-2):
-        if i in already_done:
-            continue
-        if (traj[i] == traj[i+2]).all():
-            for j in range(i, len(traj)):
-                if (traj[j] == traj[i]).all():
-                    current_targ_list.append(j)
-            # print("Current target list is ", current_targ_list)
-            # print("Current trag contender is ", traj[i])
-            if len(current_targ_list) > 2:
-                traj[current_targ_list[0]:current_targ_list[-1]] = traj[current_targ_list[0]]
-                already_done.append(current_targ_list)
-                current_targ_list = []
+    # already_done = []
+    # current_targ_list = []
+    # for i in range(len(traj)-2):
+    #     if i in already_done:
+    #         continue
+    #     if (traj[i] == traj[i+2]).all():
+    #         for j in range(i, len(traj)):
+    #             if (traj[j] == traj[i]).all():
+    #                 current_targ_list.append(j)
+    #         # print("Current target list is ", current_targ_list)
+    #         # print("Current trag contender is ", traj[i])
+    #         if len(current_targ_list) > 2:
+    #             traj[current_targ_list[0]:current_targ_list[-1]] = traj[current_targ_list[0]]
+    #             already_done.append(current_targ_list)
+    #             current_targ_list = []
     # print("TYraj after removing osciallations is ", traj)
     return traj
 
@@ -125,7 +125,7 @@ def traj_interp(c):
     return np.array(d)
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3_new_cross', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3_noisy/irl_sept_24_3', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
@@ -222,7 +222,7 @@ class OffroadLoader(Dataset):
                     continue
                 file = open(self.data_dir+'/'+demo + '/new_rank.txt', 'r')
                 demo_rank = float(file.read())
-                if demo_rank <=0.99: ### used to be <=0.2 normally, training only for optimal episodes
+                if demo_rank < 1.0: ### used to be <=0.2 normally, training only for optimal episodes
                     continue
                 # if (self.check_isnone(self.data_dir + '/' + item)):
                 #     continue
@@ -372,9 +372,9 @@ class OffroadLoader(Dataset):
         # print("Number of stops ", number_of_stops, counter_crossing_data)
         for counter_crossing in counter_crossing_data:
             counter_crossing = int(counter_crossing)
-            if counter_crossing >= current_fol_number:
+            if counter_crossing > current_fol_number:
                 break
-        print("On folder ", self.image_fol)
+        print("On folder ", self.image_fol, counter_crossing)
         # goal_sink_feat = np.array(Image.open(self.image_fol+"/goal_sink.png")).T
         # goal_sink_feat = goal_sink_feat/255*np.ones(goal_sink_feat.shape)
         # temp_sink_feat = np.zeros([1,goal_sink_feat.shape[1], goal_sink_feat.shape[2]])
@@ -460,6 +460,7 @@ class OffroadLoader(Dataset):
         # feat = np.concatenate((goal_sink_feat, semantic_img_feat), axis = 0)
         ### Add the traj features 
         robot_traj = self.auto_pad_future_from_past_counter(robot_traj[:, :2], robot_past_traj, counter_crossing)
+
         # human_past_traj = self.auto_pad_past(human_past_traj[:, :2]).T
         # robot_past_traj = self.auto_pad_past(robot_past_traj[:,:2]).T
         # past_ind = 0
@@ -712,7 +713,7 @@ class OffroadLoader(Dataset):
             counter_fol = self.data_dir+"/"+self.image_fol.split('/')[-2] + '/' + str(counter)
         else:
             counter_fol = self.data_dir+"/"+counter_fol.split('/')[-2] + '/' + str(counter)
-        # print("Counter fol is ", counter_fol)
+
         counter_fol_past_traj = np.load(counter_fol+"/robot_past_traj.npy")
         counter_fol_past_traj = traj_interp(counter_fol_past_traj)
         # lengh, counter_fol_past_traj = get_traj_length_unique_actual(counter_fol_past_traj)
@@ -754,7 +755,7 @@ class OffroadLoader(Dataset):
             else:
                 output = traj
             return  output.astype(float)
-        traj = traj[past_len_now:past_len_now+fixed_len,:]
+        traj = traj[past_len_now-1:past_len_now+fixed_len-1,:]
         # traj = traj.astype(int)
         traj = traj_interp(traj)
         length_unique, traj = get_traj_length_unique_actual(traj)

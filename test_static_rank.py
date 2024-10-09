@@ -16,6 +16,8 @@ from maxent_irl_social import visualize_batch
 from network.reward_net import RewardNet
 from IPython import embed
 from PIL import Image, ImageFile
+import matplotlib as mpl
+mpl.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.animation as animation
@@ -23,14 +25,14 @@ import matplotlib.animation as animation
 grid_size = 60
 # ImageFile.LOAD_TRUNCATED_IMAGES = True
 discount = 0.9
-batch_size = 3
+batch_size = 1
 n_worker = 2
 #exp = '6.24'
 #resume = 'step700-loss0.6980162681374217.pth'
 #net = HybridDilated(feat_out_size=25, regression_hidden_size=64)
 
-exp_name = '7.25robot'
-resume  = 'step3800-loss1.8825305944937367.pth'
+exp_name = '7.26robot'
+resume  = 'step12200-loss1.2946033345014933.pth'
 net = RewardNet(n_channels=7, n_classes=1, n_kin = 0)
 # self.net.init_weights()
 checkpoint = torch.load(os.path.join('exp', exp_name, resume))
@@ -241,11 +243,30 @@ step = 1
 returns_list = []
 im_array = []
 plt_frames = []
+prev_demo = "demo_0"
+
 for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weights,  full_trajs) in enumerate(loader):
     # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, past_traj_r)
     # if not np.isnan(prev_predicted_traj_human[start_full_index:end_full_index].all()):
     #     if not np.isnan(prev_past_traj_human[start_full_index:end_full_index]).all():
     #         feat_r[:,5,:] = get_traj_feature(feat_r[:,0], grid_size, prev_past_traj_human[start_full_index:end_full_index], prev_predicted_traj_human[start_full_index:end_full_index])
+    image_fol = loader.dataset.data_list[step]
+    print("Out here image fol is ", image_fol)
+    item = int(image_fol.split('/')[-1])
+    demo = image_fol.split('/')[-2]
+    if prev_demo != demo:
+        embed()
+        prev_demo = demo  
+
+    file = open(image_fol+ '/new_crossing_count.txt', 'r')
+    counter_crossing_data = file.read().split('\n')
+    number_of_stops = len(counter_crossing_data)
+    current_fol_number = int(image_fol.split('/')[-1])
+    # print("Number of stops ", number_of_stops, counter_crossing_data)
+    for counter_crossing in counter_crossing_data:
+        counter_crossing = int(counter_crossing)
+        if counter_crossing >= current_fol_number:
+            break 
     feat_r[:,3,:] = get_traj_feature(feat_r[:,0], grid_size, human_past_traj)
     # traj_lower = full_trajs[:, 4].numpy()
     # traj_lower = traj_lower[~np.isnan(traj_lower).any(axis=1)]  # remove appended NAN rows
@@ -260,7 +281,8 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     #     if not np.isnan(prev_past_traj_robot[start_full_index:end_full_index]).all():
     #         feat_h[:,5,:] = get_traj_feature(feat_h[:,0], grid_size, prev_past_traj_robot[start_full_index:end_full_index], prev_predicted_traj_robot[start_full_index:end_full_index])
     # feat_h[:,4,:] = get_traj_feature(feat_h[:,0], grid_size, past_traj_r, future_traj_r)
-    print("Step is ", step)
+    print("Current folder is ", current_fol_number)
+    print("Crossing counter is ", counter_crossing)
     tmp_nll_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, zeroing_loss_r = pred(feat_r, robot_traj, net, n_states, model, grid_size)
     for i in range(feat_r.shape[0]):
         # expected_return_lower = compute_return(r_var_r[i], traj_lower[i].type(torch.LongTensor))
@@ -269,7 +291,7 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
         # returns_list.append([expected_return_lower, expected_return_upper, expected_return_current])
         # print("Expected return lower is ", expected_return_lower)
         # print("Expected return upper is ", expected_return_upper)
-        print("Expected return current is ", expected_return_current)
+        # print("Expected return current is ", expected_return_current)
     r_vars_zeroed = r_var_r.clone()
     r_vars_zeroed = r_vars_zeroed*zeroing_loss_r
 
@@ -287,8 +309,15 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     print("Demo rank is ", demo_rank)
     nll_test_list_robot += tmp_nll_r
     loss = [zeroing_loss_criterion]
-    if step % 1 == 0:
-        visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, zeroing_loss_r, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r, rank_list= demo_rank)
+    # if step % 1 == 0:
+    visualize_counter = False
+    for counter_crossing in counter_crossing_data:
+        counter_crossing = int(counter_crossing)
+        if abs(current_fol_number-counter_crossing)<5:
+            visualize_counter = True
+            break
+    if visualize_counter:
+        visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, zeroing_loss_r, current_fol_number, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r, rank_list= demo_rank)
     vis.line(X=np.array([step]), Y=np.array([loss]), win=train_loss_win, update='append')
     print("Loss is ", loss) 
     step += 1
@@ -312,7 +341,7 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
 
 # ani = animation.ArtistAnimation(fig, plt_frames, interval=50, blit=True,
 #                                 repeat_delay=1000)
-im_array[0].save('robot_traj.gif', save_all=True, append_images=im_array[1:])
+# im_array[0].save('robot_traj.gif', save_all=True, append_images=im_array[1:])
 # ani.save("robot_traj.mp4")
 
 nll_test_robot = sum(nll_test_list_robot) / len(nll_test_list_robot)
