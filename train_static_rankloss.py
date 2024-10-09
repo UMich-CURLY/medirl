@@ -278,9 +278,9 @@ for epoch in range(n_epoch):
         traj_rank_weight = traj_rank_weight.unsqueeze(dim=3)
         print("Demo rank is ", demo_rank)
     
-        # torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float())])  # to maximize, hence add minus sign
+        torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float())])  # to maximize, hence add minus sign
         zeroing_loss_criterion = zeroing_loss_r.mean()
-        zeroing_loss_full = Variable(zeroing_loss_criterion, requires_grad=True)
+        # zeroing_loss_full = Variable(zeroing_loss_criterion, requires_grad=True)
         # zeroing_loss_full.backward()
         torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float())])  # to maximize, hence add minus sign
         one_hot_rank = torch.zeros((len(demo_rank)), dtype= torch.long)
