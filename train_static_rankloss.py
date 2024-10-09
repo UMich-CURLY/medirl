@@ -136,11 +136,11 @@ def zeroing_loss(c_zero, zeroing_loss):
 """ init param """
 #pre_train_weight = 'pre-train-v6-dilated/step1580-loss0.0022763446904718876.pth'
 pre_train_weight = None
-vis_per_steps = 200
+vis_per_steps = 20000
 test_per_steps = 100
 # resume = "step280-loss0.5675923794730127.pth"
 resume = None
-exp_name = '7.25'
+exp_name = '7.30'
 grid_size = 60
 discount = 0.9
 lr = 5e-4
