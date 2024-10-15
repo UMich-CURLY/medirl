@@ -37,13 +37,13 @@ torch.set_default_tensor_type('torch.DoubleTensor')
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 import ros_numpy
 resume = None
-exp_name = '7.26robot'
-resume  = 'step7200-loss1.3886675136775382.pth'
+exp_name = '7.36robot'
+resume  = 'step8000-loss1.1638-train_loss0.8232.pth'
 GRID_RESOLUTION = 0.1
 CLEARANCE_THRESH = 0.5/GRID_RESOLUTION
 GRID_SIZE_IN_M = 6
 grid_size = int(np.floor(GRID_SIZE_IN_M/GRID_RESOLUTION))
-TRAJ_LEN = 20
+TRAJ_LEN = 10
 USE_VEL = True
 VISUALIZE = True
 if VISUALIZE:
@@ -279,7 +279,7 @@ class irl():
         batch_size = 1
         # loader = OffroadLoader(grid_size=grid_size, train=False)
         # self.loader = DataLoader(loader, num_workers=n_worker, batch_size=batch_size, shuffle=False)
-        self.net = RewardNet(n_channels=7, n_classes=1, n_kin = 0)
+        self.net = RewardNet(n_channels=8, n_classes=1, n_kin = 0)
         # self.net.init_weights()
         checkpoint = torch.load(os.path.join('exp', exp_name, resume))
         self.net.load_state_dict(checkpoint['net_state'])
@@ -289,6 +289,7 @@ class irl():
         self.prev_traj = None
         self.prev_robot_pose = None
         self.human_vel = 0.0
+        print("Initialized")
 
     def is_start(self, msg):
         # self.net.eval()
@@ -307,7 +308,7 @@ class irl():
             return 
         
         print("Made it past atleast once")
-        feat = torch.empty((1,7, grid_size, grid_size), dtype=torch.float64)
+        feat = torch.empty((1,8, grid_size, grid_size), dtype=torch.float64)
         # for step, (feat, robot_traj, human_past_traj, robot_past_traj)  in enumerate(self.loader):
         start = time.time()
         # human_traj = transpose_traj(np.array(self.human_traj))
@@ -359,7 +360,11 @@ class irl():
         if feat.shape[1] == 7:
             feat[:,5,:] = get_vel_feat(self.human_traj[0], self.human_vel)
             feat[:,6,:] = get_goal_feat(self.robot_goal)
-        # feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, [self.robot_past_traj])
+        if feat.shape[1] == 8:  
+            feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, [self.robot_past_traj])
+            feat[:,5,:] = get_heading_human_feat(self.human_traj[0], self.human_angle)
+            feat[:,6,:] = get_vel_feat(self.human_traj[0], self.human_vel)
+            feat[:,7,:] = get_goal_feat(self.robot_goal)
         # feat_var = Variable(feat)
         r_var = self.net(feat)
         r_sample = r_var[0].data.numpy().squeeze().reshape(self.n_states) 
@@ -453,10 +458,14 @@ class irl():
             loc = self.contain_grid(loc)
             self.robot_past_traj.append(loc)
         # self.robot_past_traj = self.auto_pad_past(self.robot_past_traj)
-        self.robot_past_traj = np.array(self.robot_past_traj)
+        
+
         self.robot_traj = np.array([self.robot_past_traj[-1][0], self.robot_past_traj[-1][1]])
         orientation = [msg.poses[-1].pose.orientation.x, msg.poses[-1].pose.orientation.y, msg.poses[-1].pose.orientation.z, msg.poses[-1].pose.orientation.w]
         self.robot_angle = msg.poses[-1].pose.orientation.z*10
+        self.robot_past_traj = np.array(self.robot_past_traj)
+        self.robot_past_traj = auto_pad_past(self.robot_past_traj)
+        self.robot_past_traj.astype(int)
         mutex.release()
 
     def img_callback(self,msg):

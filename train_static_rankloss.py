@@ -136,11 +136,11 @@ def zeroing_loss(c_zero, zeroing_loss):
 """ init param """
 #pre_train_weight = 'pre-train-v6-dilated/step1580-loss0.0022763446904718876.pth'
 pre_train_weight = None
-vis_per_steps = 20000
-test_per_steps = 100
+vis_per_steps = 10000
+test_per_steps = 1000
 # resume = "step280-loss0.5675923794730127.pth"
 resume = None
-exp_name = '7.30'
+exp_name = '7.36'
 grid_size = 60
 discount = 0.9
 lr = 5e-4
@@ -157,7 +157,7 @@ if not os.path.exists(os.path.join('exp', exp_name+"robot")):
     os.makedirs(os.path.join('exp', exp_name+"robot"))
 
 host = os.environ['HOSTNAME']
-vis2 = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8091)
+vis2 = visdom.Visdom(env='v{}-{}'.format(exp_name+"robot", host), server='http://127.0.0.1', port=8094)
 
 # vis = visdom.Visdom(env='main')
 
@@ -174,7 +174,7 @@ test_loader_robot = DataLoader(test_loader_robot, num_workers=n_worker, batch_si
 
 # net_robot = HybridDilated(feat_in_size = 4, feat_out_size = 50)
 # net_robot = OnlyEnvDilated(feat_in_size = 4, feat_out_size = 50)
-net_robot = RewardNet(n_channels=7, n_classes=1, n_kin = 0)
+net_robot = RewardNet(n_channels=8, n_classes=1, n_kin = 0)
 
 
 
@@ -256,7 +256,7 @@ for epoch in range(n_epoch):
         # goal_svf = feat[:,5,:].float().unsqueeze(dim=1)/6.0
         # feat = feat[:,:5, :]
         # print(feat_test)
-        # feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, robot_past_traj)
+        feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, robot_past_traj)
         nll_list_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, expected_return, zeroing_loss_r = pred(feat, robot_traj, net_robot, n_states, model_robot, grid_size, full_traj)
         # prev_past_traj_robot[start_full_index:end_full_index] = past_traj_r
         # prev_predicted_traj_robot[start_full_index:end_full_index] = auto_pad_future(grid_size, np.array(sampled_trajs_r))
@@ -266,11 +266,16 @@ for epoch in range(n_epoch):
         # a hack to enable backprop in pytorch with a vector
         # the normally used loss.backward() only works when loss is a scalar
         c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
+        c_zero = 1e-4
         # c_zero = np.zeros(c_zero.shape)
-        for i in range(len(c_zero)):
-            denom = r_var_r[i].detach().numpy()/np.linalg.norm(r_var_r[i].detach())
-            denom = torch.tensor(denom, dtype = torch.float32)
-            zeroing_loss_r[i] = c_zero[i]*zeroing_loss_r[i]/denom
+        # c_zero = svf_diff_var_r.mean()
+        zeroing_loss_grad = torch.zeros(r_var_r.shape)
+        for i in range(r_var_r.shape[0]):
+            # denom = r_var_r[i].detach().numpy()/np.linalg.norm(r_var_r[i].detach())
+            # denom = torch.tensor(denom, dtype = torch.float32)
+            # zeroing_loss_grad[i] = c_zero*torch.tensor(np.logical_not(zeroing_loss_r[i] >0.01), dtype = torch.float32)*torch.max(torch.zeros(r_var_r[i].shape),r_var_r[i])
+            zeroing_loss_grad[i] = c_zero*torch.tensor(np.logical_not(zeroing_loss_r[i] >0.01), dtype = torch.float32)*torch.tanh(r_var_r[i])
+            
         # traj_rank_weight = normalize_rank(demo_rank)
         traj_rank_weight = weights
         traj_rank_weight = traj_rank_weight.unsqueeze(dim=1)
@@ -278,11 +283,12 @@ for epoch in range(n_epoch):
         traj_rank_weight = traj_rank_weight.unsqueeze(dim=3)
         print("Demo rank is ", demo_rank)
     
-        torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float())])  # to maximize, hence add minus sign
-        zeroing_loss_criterion = zeroing_loss_r.mean()
+        # torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float()-zeroing_loss_grad.float())])  # to maximize, hence add minus sign
+        zeroing_loss_criterion = zeroing_loss_grad.mean()
+        print("Mean value of two grads are ", svf_diff_var_r.mean(), zeroing_loss_grad.mean())
         # zeroing_loss_full = Variable(zeroing_loss_criterion, requires_grad=True)
         # zeroing_loss_full.backward()
-        # torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float())])  # to maximize, hence add minus sign
+        torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float())])  # to maximize, hence add minus sign
         one_hot_rank = torch.zeros((len(demo_rank)), dtype= torch.long)
         for i in range(len(demo_rank)):
             one_hot_rank[i] = int(demo_rank[i]*10)-2
@@ -302,8 +308,6 @@ for epoch in range(n_epoch):
         loss = cross_entropy_prob(torch.t(expected_return), one_hot_new, weight)
         loss_var = Variable(loss, requires_grad=True)
         # loss_var.backward()
-        #### Hack to visualize easy, see TRIBHI
-        loss = zeroing_loss_criterion
         # torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float())])
         ### Original loss 
         # torch.autograd.backward([r_var_r], [-svf_diff_var_r.float()])  # to maximize, hence add minus sign
@@ -350,7 +354,7 @@ for epoch in range(n_epoch):
         loss_cma = (loss + loss_cma * min(step, 20)) / (min(step, 20) + 1)
         vis2.line(X=np.array([[step, step]]), Y=np.array([[loss, loss_cma]]), win=train_loss_win, update='append')
         if step % vis_per_steps == 0 and not step ==0 :
-            visualize_batch([robot_traj[0]], robot_traj, feat, r_var_r, values_list_r, zeroing_loss_r.float() , step, vis2, grid_size, train=True, policy_sample_list=sampled_trajs_r, rank_list=demo_rank)
+            visualize_batch([robot_traj[0]], robot_traj, feat, r_var_r, values_list_r, zeroing_loss_grad.float() , step, vis2, grid_size, train=True, policy_sample_list=sampled_trajs_r, rank_list=demo_rank)
             if step == 0:
                 step += 1
                 continue
@@ -379,7 +383,7 @@ for epoch in range(n_epoch):
             print('main. test nll {}'.format(nll_test_robot))
             vis2.line(X=np.array([step]), Y=np.array([nll_test_robot]), win=test_nll_win_robot, update='append')
             if step % vis_per_steps == 0 and not step ==0:
-                visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, svf_diff_var_r, step, vis2, grid_size, train=False, policy_sample_list=sampled_trajs_r)
+                visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, zeroing_loss_grad, step, vis2, grid_size, train=False, policy_sample_list=sampled_trajs_r)
             # print("Robot Traj is ", robot_traj)
             # print("Sampled Traj is ", sampled_trajs_r)
             if nll_test_robot < best_test_nll_robot:

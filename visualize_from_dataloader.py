@@ -107,7 +107,7 @@ for index, (feat, robot_traj, human_past_traj, robot_past_traj, demo_rank, weigh
     overlay_map = feat[0, 1, :, :].float().view(grid_size, -1).numpy()  # (grid_size, grid_size)
     overlay_map = overlay_traj_to_map(traj_sample, overlay_map)
     # if counter % vis_per_steps == 0:
-    visualize_counter = False
+    visualize_counter = True
     for counter_crossing in counter_crossing_data:
         counter_crossing = int(counter_crossing)
         if abs(current_fol_number-counter_crossing)<5:

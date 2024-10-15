@@ -17,10 +17,10 @@ import copy
 import math
 import csv 
 USE_GOAL = True
-FIXED_LEN = 20
+FIXED_LEN = 10
 USE_VEL = True
 USE_HEADING = True
-NUMBER_OF_NOISE_SAMPLES = 1
+NUMBER_OF_NOISE_SAMPLES = 6
 def transpose_traj(traj):
     for i in range(traj.shape[0]):
         temp = traj[i,0] 
@@ -125,7 +125,7 @@ def traj_interp(c):
     return np.array(d)
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3_noisy/irl_sept_24_3', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3_new_cross', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
@@ -478,11 +478,11 @@ class OffroadLoader(Dataset):
         human_traj_feature[0,list(np.array(human_past_traj[:,0], np.int)), list(np.array(human_past_traj[:,1], np.int))] = 100
         # other_traj_feature = np.zeros(goal_sink_feat.shape)
         robot_traj_feature = np.zeros([1,semantic_img_feat.shape[1], semantic_img_feat.shape[2]])
-        # robot_traj_feature[0,list(np.array(robot_past_traj[:,0], np.int)), list(np.array(robot_past_traj[:,1], np.int))] = 100
+        robot_traj_feature[0,list(np.array(robot_past_traj[:,0], np.int)), list(np.array(robot_past_traj[:,1], np.int))] = 100
         # other_traj_feature[0,list(np.array(past_other_traj[:,0], np.int)), list(np.array(past_other_traj[:,1], np.int))] = 100
         # kin_feats = np.concatenate((self_traj_feature, ther_traj_feature), axis = 0)
         feat = np.concatenate((semantic_img_feat, human_traj_feature), axis = 0)
-        # feat = np.concatenate((feat, robot_traj_feature), axis = 0)
+        feat = np.concatenate((feat, robot_traj_feature), axis = 0)
         # normalize features locally
 
         for i in range(feat.shape[0]):
@@ -504,7 +504,7 @@ class OffroadLoader(Dataset):
         
         current_fol_number = int(self.image_fol.split('/')[-1])
         demo_num = int(self.image_fol.split('/')[-2].split('_')[1])
-        full_traj_array = np.NaN*np.ones((9,20,2))
+        full_traj_array = np.NaN*np.ones((9,FIXED_LEN,2))
         if "train" in self.image_fol:
             for ep in self.ep_list:
                 if demo_num in self.ep_list[ep]:
