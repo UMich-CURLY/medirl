@@ -14,3 +14,5 @@ exp/
 .bash_history
 *.log
 *.code-workspace
+*.gif
+*.png

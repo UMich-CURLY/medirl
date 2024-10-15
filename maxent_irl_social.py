@@ -113,8 +113,8 @@ def rl(traj_sample, r_sample, model, grid_size):
     values_sample = model.find_optimal_value(r_sample, 0.1)
     policy = model.find_stochastic_policy(values_sample, r_sample)
     ### Can change to sampling longer trajectories
-    # sampled_traj = model.traj_sample(policy, traj_sample.shape[0], traj_sample[0,0], traj_sample[0,1])
-    sampled_traj = model.traj_sample(policy, 20, traj_sample[0,0], traj_sample[0,1])
+    sampled_traj = model.traj_sample(policy, traj_sample.shape[0], traj_sample[0,0], traj_sample[0,1])
+    # sampled_traj = model.traj_sample(policy, 20, traj_sample[0,0], traj_sample[0,1])
     svf_sample = model.find_svf(traj_sample, policy)
     svf_diff_sample = svf_demo_sample - svf_sample
     # zeroing_loss = np.where(np.round(svf_sample+svf_demo_sample,3)>0.0, 1.0, 0.0)

@@ -136,11 +136,11 @@ def zeroing_loss(c_zero, zeroing_loss):
 """ init param """
 #pre_train_weight = 'pre-train-v6-dilated/step1580-loss0.0022763446904718876.pth'
 pre_train_weight = None
-vis_per_steps = 20000
+vis_per_steps = 2000
 test_per_steps = 100
-# resume = "step280-loss0.5675923794730127.pth"
-resume = None
-exp_name = '7.30'
+resume = "step9900-loss1.0088-train_loss0.8459.pth"
+# resume = None
+exp_name = '7.32'
 grid_size = 60
 discount = 0.9
 lr = 5e-4
@@ -206,11 +206,11 @@ if resume is None:
         pre_train_check = torch.load(os.path.join('exp', pre_train_weight))
         net_robot.init_with_pre_train(pre_train_check)
 else:
-    checkpoint_human = torch.load(os.path.join('exp', exp_name+"human", resume))
+    # checkpoint_human = torch.load(os.path.join('exp', exp_name+"human", resume))
     checkpoint_robot = torch.load(os.path.join('exp', exp_name+"robot", resume))
     step = checkpoint_robot['step']
     net_robot.load_state_dict(checkpoint_robot['net_state'])
-    nll_cma_human = checkpoint_human['nll_cma']
+    # nll_cma_human = checkpoint_human['nll_cma']
     nll_cma_robot = checkpoint_robot['nll_cma']
     # opt.load_state_dict(checkpoint['opt_state'])
 
@@ -277,7 +277,7 @@ for epoch in range(n_epoch):
         traj_rank_weight = traj_rank_weight.unsqueeze(dim=2)
         traj_rank_weight = traj_rank_weight.unsqueeze(dim=3)
         print("Demo rank is ", demo_rank)
-    
+        
         torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float())])  # to maximize, hence add minus sign
         zeroing_loss_criterion = zeroing_loss_r.mean()
         # zeroing_loss_full = Variable(zeroing_loss_criterion, requires_grad=True)

@@ -16,11 +16,11 @@ from maxent_irl_social import visualize_batch
 from network.reward_net import RewardNet
 from IPython import embed
 from PIL import Image, ImageFile
-import matplotlib as mpl
-mpl.use('Agg')
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import matplotlib.animation as animation
+# import matplotlib.cm as cm
+# import matplotlib.animation as animation
 # initialize param
 grid_size = 60
 # ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -31,8 +31,8 @@ n_worker = 2
 #resume = 'step700-loss0.6980162681374217.pth'
 #net = HybridDilated(feat_out_size=25, regression_hidden_size=64)
 
-exp_name = '7.26robot'
-resume  = 'step12200-loss1.2946033345014933.pth'
+exp_name = '7.32robot'
+resume  = 'step22100-loss0.9113-train_loss0.7555.pth'
 net = RewardNet(n_channels=7, n_classes=1, n_kin = 0)
 # self.net.init_weights()
 checkpoint = torch.load(os.path.join('exp', exp_name, resume))
@@ -57,9 +57,16 @@ def make_plot_and_save(data, filename):
     plt.colorbar()  # Optional: Add a colorbar to the side
 
     # Save the heatmap to a temporary file
-    plt.savefig('heatmap_temp.png', bbox_inches='tight')
+    plt.savefig(filename, bbox_inches='tight')
     plt.close()  # Close the plot to free memory
     return
+
+def get_concat_h(im1, im2):
+    dst = Image.new('RGB', (im1.width + im2.width, im1.height))
+    dst.paste(im1, (0, 0))
+    dst.paste(im2, (im1.width, 0))
+    return dst
+
 
 def get_traj_feature(goal_sink_feat, grid_size, past_traj, future_traj = None):
     feat = np.zeros(goal_sink_feat.shape)
@@ -172,7 +179,7 @@ def rl(traj_sample, r_sample, model, grid_size):
     policy = model.find_stochastic_policy(values_sample, r_sample)
     ### Can change to sampling longer trajectories
     sampled_traj = model.traj_sample(policy, traj_sample.shape[0], traj_sample[0,0], traj_sample[0,1])
-    sampled_traj = model.traj_sample(policy, 20, traj_sample[0,0], traj_sample[0,1])
+    # sampled_traj = model.traj_sample(policy, 20, traj_sample[0,0], traj_sample[0,1])
     svf_sample = model.find_svf(traj_sample, policy)
     svf_diff_sample = svf_demo_sample - svf_sample
     zeroing_loss = np.where(np.round(svf_sample+svf_demo_sample,3)>0.0, 1.0, 0.0)
@@ -255,8 +262,12 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     item = int(image_fol.split('/')[-1])
     demo = image_fol.split('/')[-2]
     if prev_demo != demo:
-        embed()
-        prev_demo = demo  
+        # embed()
+        prev_demo = demo 
+        if not len(im_array) == 0:
+            im_array[0].save('robo_frames/robot_traj_'+prev_demo+'.gif', save_all=True, append_images=im_array[1:], loop = 0)
+            im_array = []
+
 
     file = open(image_fol+ '/new_crossing_count.txt', 'r')
     counter_crossing_data = file.read().split('\n')
@@ -329,19 +340,22 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
         data[int(traj_final[i][0]), int(traj_final[i][1])] = 4.0
 
     make_plot_and_save(data, 'heatmap_temp.png')
-
+    reward_data = r_var_r[:].detach().numpy()
+    reward_data = reward_data[0][0]
+    make_plot_and_save(reward_data, 'reward_temp.png')
 # Open the saved image using PIL
     img = Image.open('heatmap_temp.png')
-
+    reward_img = Image.open('reward_temp.png')
+    full_img = get_concat_h(img, reward_img)
     # for i in range(len(traj_final)):
     #     img.putpixel((int(traj_final[i][0])*10, int(traj_final[i][1])*10), (255,0,0))
     # img.save('heatmap_temp_traj.png')
-    im_array.append(img)
+    im_array.append(full_img)
     # plt_frames.append([plt.imshow(data, cmap='hot', interpolation='nearest', animated=True)])
 
 # ani = animation.ArtistAnimation(fig, plt_frames, interval=50, blit=True,
 #                                 repeat_delay=1000)
-# im_array[0].save('robot_traj.gif', save_all=True, append_images=im_array[1:])
+im_array[0].save('robot_traj.gif', save_all=True, append_images=im_array[1:])
 # ani.save("robot_traj.mp4")
 
 nll_test_robot = sum(nll_test_list_robot) / len(nll_test_list_robot)
