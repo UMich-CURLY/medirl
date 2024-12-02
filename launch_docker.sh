@@ -29,4 +29,4 @@ docker run -it --net=host\
     --runtime nvidia \
     --security-opt seccomp=unconfined \
     --name=${container_name} \
-    medirl:noetic
+    medirl:again

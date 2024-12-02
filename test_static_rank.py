@@ -31,8 +31,8 @@ n_worker = 2
 #resume = 'step700-loss0.6980162681374217.pth'
 #net = HybridDilated(feat_out_size=25, regression_hidden_size=64)
 
-exp_name = '7.35robot'
-resume  = 'step1700-loss2.2381-train_loss0.1669.pth'
+exp_name = '7.51robot'
+resume  = 'step13000-loss1.4111-train_loss0.8876.pth'
 net = RewardNet(n_channels=8, n_classes=1, n_kin = 0, feat_out_size=25)
 # self.net.init_weights()
 checkpoint = torch.load(os.path.join('exp', exp_name, resume))
@@ -51,9 +51,28 @@ net.load_state_dict(checkpoint['net_state'])
 #     dist_sample = model.compute_hausdorff_loss(policy, future_traj_sample, n_samples=1000)
 #     return nll_sample, svf_diff_var_sample, values_sample, dist_sample
 
+def rasterize_image(input_image, output_size = (512, 512)):
+    """
+    Resizes the input image to the specified output size using rasterization.
+    
+    Args:
+        input_image (PIL.Image.Image or np.ndarray): Input image to rasterize.
+        output_size (tuple): Desired output size as (width, height).
+    
+    Returns:
+        PIL.Image.Image: Rasterized image.
+    """
+    # Convert input to PIL Image if it's a numpy array
+    if isinstance(input_image, np.ndarray):
+        input_image = Image.fromarray(input_image)
+
+    # Resize the image
+    rasterized_image = input_image.resize(output_size, Image.ANTIALIAS)
+    return rasterized_image
+
 def make_plot_and_save(data, filename):
     fig = plt.figure(figsize=(6, 6))
-    plt.imshow(data, cmap='hot', interpolation='nearest')
+    plt.imshow(data, cmap='gray', interpolation='nearest')
     plt.colorbar()  # Optional: Add a colorbar to the side
 
     # Save the heatmap to a temporary file
@@ -61,10 +80,28 @@ def make_plot_and_save(data, filename):
     plt.close()  # Close the plot to free memory
     return
 
+def make_plot_and_save_rgb(data, filename, traj_final):
+    # data = data.T
+    # for i in range(3):
+    #     data[:,:,i] = data[:,:,i]/np.max(data[:,:,i]) * 256
+    fig = plt.figure(figsize=(6,6))
+    for i in range(3):
+        data[:,:,i] = data[:,:,i] * 255
+    data = np.array(data, dtype = np.uint8)
+    data = np.transpose(data, (1,0,2))
+    # for i in range(len(traj_final)):
+    #     data[int(traj_final[i][0]), int(traj_final[i][1]),:] = [0,255,0]
+    plt.imshow(data)
+    plt.savefig(filename, bbox_inches='tight')
+    plt.close()
+    return
+
+
+
 def get_concat_h(im1, im2):
-    dst = Image.new('RGB', (im1.width + im2.width, im1.height))
+    dst = Image.new('RGB', (im1.width + im2.width, im1.height), color = 'white')
     dst.paste(im1, (0, 0))
-    dst.paste(im2, (im1.width, 0))
+    dst.paste(im2, (im1.width, int((im1.height-im2.height)/2)))
     return dst
 
 
@@ -252,7 +289,7 @@ im_array = []
 plt_frames = []
 prev_demo = "demo_0"
 
-for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weights,  full_trajs) in enumerate(loader):
+for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weights,  full_trajs, robot_traj_all) in enumerate(loader):
     # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, past_traj_r)
     # if not np.isnan(prev_predicted_traj_human[start_full_index:end_full_index].all()):
     #     if not np.isnan(prev_past_traj_human[start_full_index:end_full_index]).all():
@@ -263,7 +300,7 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     demo = image_fol.split('/')[-2]
     if prev_demo != demo:
         # embed()
-        if not len(im_array) == 0:
+        if not len(im_array) == 0: 
             im_array[0].save('robo_frames/robot_traj_'+prev_demo+'.gif', save_all=True, append_images=im_array[1:], loop = 0)
             im_array = []
         prev_demo = demo 
@@ -304,21 +341,57 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
         # print("Expected return current is ", expected_return_current)
     r_vars_zeroed = r_var_r.clone()
     r_vars_zeroed = r_vars_zeroed*zeroing_loss_r
+    svf_demo_sample = model.find_demo_svf(list(robot_traj[0].long()))
+    
+    # values_sample = model.find_optimal_value(r_var_r[0], 0.1)
+    # policy = model.find_stochastic_policy(values_sample[0], r_var_r[0][0])
+    c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
+    c_zero = min(1e-3, abs(svf_diff_var_r.max())*0.1)
+    c_zero = 1e-3
+    zeroing_loss_grad = torch.zeros(r_var_r.shape)
+    traj_based_zeroing = torch.zeros(r_var_r.shape)
+    max_r_in_traj = -1000
+    for i in range(r_var_r.shape[0]):
+        # embed()
+        # robot_traj_all[i][0] = robot_traj_all[i][0][~np.isnan(robot_traj_all[i][0]).any(axis =0)]
+        
+        for point in robot_traj_all[i]:
+            if np.isnan(point).any():
+                continue
+            if point in robot_traj[i].numpy():
+                if r_var_r[i, 0, int(point[0]), int(point[1])] >max_r_in_traj:
+                    max_r_in_traj = r_var_r[i, 0, int(point[0]), int(point[1])]
+                continue
+            if feat_r[i,7,int(point[0]), int(point[1])] >1.0:
+                continue
+            traj_based_zeroing[i,0,int(point[0]), int(point[1])] = 1.0
+    
 
-    c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
+    for i in range(r_var_r.shape[0]):
+        # denom = r_var_r[i].detach().numpy()/np.linalg.norm(r_var_r[i].detach())
+        # denom = torch.tensor(denom, dtype = torch.float32)
+        # zeroing_loss_grad[i] = c_zero*torch.tensor(np.logical_not(zeroing_loss_r[i] >0.01), dtype = torch.float32)*torch.max(torch.zeros(r_var_r[i].shape),r_var_r[i])
+        # binary = torch.tensor(np.logical_not(zeroing_loss_r[i] >0.1), dtype = torch.float32)* torch.tensor(np.logical_not(r_var_r[i] <0.1), dtype = torch.float32)
+        # binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32)* torch.tensor(np.logical_not(r_var_r[i] <0.1), dtype = torch.float32)
+        # binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32)
+        binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32) + torch.tensor(np.logical_not(r_var_r[i] <max_r_in_traj), dtype = torch.float32)
+        
+        zeroing_loss_grad[i] = c_zero*binary_for_traj_zeroing*torch.tanh(r_var_r[i])
+        # zeroing_loss_grad[i] = c_zero*binary*torch.tanh(r_var_r[i])
     # c_zero = np.zeros(c_zero.shape)
+    svf_expected = svf_diff_var_r[0][0].numpy() - svf_demo_sample.reshape((60,60))
     grad_zeroed = torch.zeros(r_vars_zeroed.shape)
-    for i in range(len(c_zero)):
-        grad_zeroed[i] = c_zero[i]*(torch.ones(zeroing_loss_r[i].shape)-zeroing_loss_r[i])
-    # traj_rank_weight = normalize_rank(demo_rank)
-    c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
-        # c_zero = np.zeros(c_zero.shape)
-    for i in range(len(c_zero)):
-        zeroing_loss_r[i] = c_zero[i]*zeroing_loss_r[i]
-    zeroing_loss_criterion = zeroing_loss_r.mean()
-    print("Demo rank is ", demo_rank)
-    nll_test_list_robot += tmp_nll_r
-    loss = [zeroing_loss_criterion]
+    # for i in range(len(c_zero)):
+    #     grad_zeroed[i] = c_zero[i]*(torch.ones(zeroing_loss_r[i].shape)-zeroing_loss_r[i])
+    # # traj_rank_weight = normalize_rank(demo_rank)
+    # c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
+    #     # c_zero = np.zeros(c_zero.shape)
+    # for i in range(len(c_zero)):
+    #     zeroing_loss_r[i] = c_zero[i]*zeroing_loss_r[i]
+    # zeroing_loss_criterion = zeroing_loss_r.mean()
+    # print("Demo rank is ", demo_rank)
+    # nll_test_list_robot += tmp_nll_r
+    loss = zeroing_loss_grad.detach().numpy().mean()
     # if step % 1 == 0:
     visualize_counter = False
     for counter_crossing in counter_crossing_data:
@@ -330,15 +403,16 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
         visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, zeroing_loss_r, current_fol_number, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r, rank_list= demo_rank)
     vis.line(X=np.array([step]), Y=np.array([loss]), win=train_loss_win, update='append')
     print("Loss is ", loss) 
+    print("C zero is ", c_zero)
     step += 1
     traj_final = sampled_trajs_r[0]
     img = feat_r[:,0:3].numpy()
     img = img[0]
-    data = img[0]
-    for i in range(len(traj_final)):
-        data[int(traj_final[i][0]), int(traj_final[i][1])] = 4.0
-
-    make_plot_and_save(data, 'heatmap_temp.png')
+    # data = img[0]
+    # for i in range(len(traj_final)):
+    #     data[int(traj_final[i][0]), int(traj_final[i][1])] = 4.0
+    img = plt.imread(image_fol+"/grid_map.png")
+    make_plot_and_save_rgb(img, 'heatmap_temp.png', traj_final)
     reward_data = r_var_r[:].detach().numpy()
     reward_data = reward_data[0][0]
     make_plot_and_save(reward_data, 'reward_temp.png')
@@ -346,15 +420,42 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     img = Image.open('heatmap_temp.png')
     reward_img = Image.open('reward_temp.png')
     full_img = get_concat_h(img, reward_img)
+    make_plot_and_save(svf_demo_sample.reshape((60,60)), 'svf_demo.png')
+    svf_demo_img = Image.open('svf_demo.png')
+    full_img = get_concat_h(full_img, svf_demo_img)
+    make_plot_and_save(svf_expected, 'svf_learned.png')
+    svf_exp_img = Image.open('svf_learned.png')
+    full_img = get_concat_h(full_img, svf_exp_img)
+    traj_based_zeroing = torch.zeros(reward_data.shape)
+    for i in range(r_var_r.shape[0]):
+        # embed()
+        # robot_traj_all[i][0] = robot_traj_all[i][0][~np.isnan(robot_traj_all[i][0]).any(axis =0)]
+        
+            
+        for point in robot_traj_all[i]:
+            if np.isnan(point).any():
+                continue
+            if point in robot_traj[i].numpy():
+                continue
+            traj_based_zeroing[int(point[0]), int(point[1])] = 1.0
+    
+    make_plot_and_save(traj_based_zeroing, 'not_robot_traj.png')
+    not_robot_traj_img = Image.open('not_robot_traj.png')
+    full_img = get_concat_h(full_img, not_robot_traj_img)
+    make_plot_and_save(zeroing_loss_grad[:].detach().numpy()[0][0], 'tanh_r.png')
+    tanh_r_img = Image.open('tanh_r.png')
+    full_img = get_concat_h(full_img, tanh_r_img)
     # for i in range(len(traj_final)):
     #     img.putpixel((int(traj_final[i][0])*10, int(traj_final[i][1])*10), (255,0,0))
     # img.save('heatmap_temp_traj.png')
     im_array.append(full_img)
+    np.save(image_fol+'/robot_traj_post.npy', robot_traj)
+
     # plt_frames.append([plt.imshow(data, cmap='hot', interpolation='nearest', animated=True)])
 
 # ani = animation.ArtistAnimation(fig, plt_frames, interval=50, blit=True,
 #                                 repeat_delay=1000)
-im_array[0].save('robot_traj.gif', save_all=True, append_images=im_array[1:])
+im_array[0].save('robot_traj.gif', save_all=True, append_images=im_array[1:], loop = 0)
 # ani.save("robot_traj.mp4")
 nll_test_robot = sum(nll_test_list_robot) / len(nll_test_list_robot)
 print('main. test nll {}'.format(nll_test_robot))

@@ -125,7 +125,7 @@ def traj_interp(c):
     return np.array(d)
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3_new_cross', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3_new_cross_noised', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
@@ -159,10 +159,11 @@ class OffroadLoader(Dataset):
         for metric in self.metrics:
             if metric['ep_no'] in self.ep_list.keys():
                 # try:
-                new_list = self.ep_list[metric['ep_no']].copy()
-                new_list.append(int(metric['reset_counter']))
-                # self.ep_list.update({metric['ep_no']: [self.ep_list[metric['ep_no']][0:-1][0], (int(metric['reset_counter']))]})
-                self.ep_list.update({metric['ep_no']: new_list})
+                if os.path.exists(self.data_dir+"demo_"+metric['reset_counter']):
+                    new_list = self.ep_list[metric['ep_no']].copy()
+                    new_list.append(int(metric['reset_counter']))
+                    # self.ep_list.update({metric['ep_no']: [self.ep_list[metric['ep_no']][0:-1][0], (int(metric['reset_counter']))]})
+                    self.ep_list.update({metric['ep_no']: new_list})
                 # except:
                 
             else:
@@ -222,7 +223,7 @@ class OffroadLoader(Dataset):
                     continue
                 file = open(self.data_dir+'/'+demo + '/new_rank.txt', 'r')
                 demo_rank = float(file.read())
-                if demo_rank < 1.0: ### used to be <=0.2 normally, training only for optimal episodes
+                if demo_rank < 0.2: ### used to be <=0.2 normally, training only for optimal episodes
                     continue
                 # if (self.check_isnone(self.data_dir + '/' + item)):
                 #     continue
@@ -513,6 +514,7 @@ class OffroadLoader(Dataset):
             for demo in demos:
                 with open(self.data_dir+'/demo_'+str(demo)+"/new_traj.npy", 'rb') as f:
                     full_traj = np.load(f)
+                
                 full_traj = np.array(traj_interp(full_traj), np.int)
                 robot_traj_full = full_traj
                 # length, robot_traj_full = get_traj_length_unique_actual(full_traj)
@@ -570,7 +572,8 @@ class OffroadLoader(Dataset):
                     human_past_traj = self.auto_pad_past(human_past_traj[:, :2]).T
                     robot_past_traj = self.auto_pad_past(robot_past_traj[:,:2]).T
                     print("robot traj gris dtype ", robot_traj_grid.dtype, type(robot_traj_grid))
-                    return feat, robot_traj_grid, human_past_traj, robot_past_traj, demo_rank, weight, full_traj_array
+                    robot_traj_all = self.auto_pad_past(robot_traj_grid)
+                    return feat, robot_traj_grid, human_past_traj, robot_past_traj, demo_rank, weight, full_traj_array, robot_traj_all
                 
                 
                     
@@ -581,9 +584,16 @@ class OffroadLoader(Dataset):
         human_past_traj = self.auto_pad_past(human_past_traj[:, :2]).T
         robot_past_traj = self.auto_pad_past(robot_past_traj[:,:2]).T
     
-    
+        with open(self.image_fol+"/new_traj.npy", 'rb') as f:
+            full_traj_all = np.load(f)
+        full_traj_all = np.array(traj_interp(full_traj_all), np.int)
+        robot_traj_all = remove_oscilations(full_traj_all)
+        # print("Valid full traj? ", is_valid_traj(full_traj))
+        # length, robot_traj = get_traj_length_unique_actual(full_traj)
+        robot_traj_all = traj_interp(robot_traj_all)
+        robot_traj_all = self.auto_pad_past(robot_traj_all)
         # future_other_traj = self.auto_pad_future(future_other_traj[:, :2])
-        return feat, robot_traj, human_past_traj, robot_past_traj, demo_rank, weight, full_traj_array
+        return feat, robot_traj, human_past_traj, robot_past_traj, demo_rank, weight, full_traj_array, robot_traj_all
 
     def __len__(self):
         return len(self.data_list)

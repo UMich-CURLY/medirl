@@ -138,9 +138,9 @@ def zeroing_loss(c_zero, zeroing_loss):
 pre_train_weight = None
 vis_per_steps = 10000
 test_per_steps = 1000
-# resume = "step280-loss0.5675923794730127.pth"
+# resume = "step7000-loss0.8566-train_loss0.9289.pth"
 resume = None
-exp_name = '7.36'
+exp_name = '7.54'
 grid_size = 60
 discount = 0.9
 lr = 5e-4
@@ -206,11 +206,11 @@ if resume is None:
         pre_train_check = torch.load(os.path.join('exp', pre_train_weight))
         net_robot.init_with_pre_train(pre_train_check)
 else:
-    checkpoint_human = torch.load(os.path.join('exp', exp_name+"human", resume))
+    # checkpoint_human = torch.load(os.path.join('exp', exp_name+"human", resume))
     checkpoint_robot = torch.load(os.path.join('exp', exp_name+"robot", resume))
     step = checkpoint_robot['step']
     net_robot.load_state_dict(checkpoint_robot['net_state'])
-    nll_cma_human = checkpoint_human['nll_cma']
+    # nll_cma_human = checkpoint_human['nll_cma']
     nll_cma_robot = checkpoint_robot['nll_cma']
     # opt.load_state_dict(checkpoint['opt_state'])
 
@@ -236,7 +236,7 @@ prev_predicted_traj_human = np.empty([total_demos, grid_size, 2])*np.nan
 
 for epoch in range(n_epoch):
     batch_iter = []
-    for index, (feat, robot_traj, human_past_traj, robot_past_traj, demo_rank, weights, full_traj) in enumerate(train_loader_robot):
+    for index, (feat, robot_traj, human_past_traj, robot_past_traj, demo_rank, weights, full_traj, robot_traj_all) in enumerate(train_loader_robot):
         print("outside loop")
         start = time.time()
         net_robot.train()
@@ -266,16 +266,43 @@ for epoch in range(n_epoch):
         # a hack to enable backprop in pytorch with a vector
         # the normally used loss.backward() only works when loss is a scalar
         c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
-        c_zero = 1e-4
+        c_zero = min(1e-3, abs(svf_diff_var_r.max())*0.1)
         # c_zero = np.zeros(c_zero.shape)
         # c_zero = svf_diff_var_r.mean()
         zeroing_loss_grad = torch.zeros(r_var_r.shape)
+        traj_based_zeroing = torch.zeros(r_var_r.shape)
+        max_r_in_traj = -1000
+        for i in range(r_var_r.shape[0]):
+            # embed()
+            # robot_traj_all[i][0] = robot_traj_all[i][0][~np.isnan(robot_traj_all[i][0]).any(axis =0)]
+            
+            for point in robot_traj_all[i]:
+                if np.isnan(point).any():
+                    continue
+                if point in robot_traj[i].numpy():
+                    if r_var_r[i, 0, int(point[0]), int(point[1])] >max_r_in_traj:
+                        max_r_in_traj = r_var_r[i, 0, int(point[0]), int(point[1])]
+                    continue
+                if feat[i,7,int(point[0]), int(point[1])] >1.0:
+                    continue
+                traj_based_zeroing[i,0,int(point[0]), int(point[1])] = 1.0
+        
+
         for i in range(r_var_r.shape[0]):
             # denom = r_var_r[i].detach().numpy()/np.linalg.norm(r_var_r[i].detach())
             # denom = torch.tensor(denom, dtype = torch.float32)
             # zeroing_loss_grad[i] = c_zero*torch.tensor(np.logical_not(zeroing_loss_r[i] >0.01), dtype = torch.float32)*torch.max(torch.zeros(r_var_r[i].shape),r_var_r[i])
-            zeroing_loss_grad[i] = c_zero*torch.tensor(np.logical_not(zeroing_loss_r[i] >0.01), dtype = torch.float32)*torch.tanh(r_var_r[i])
-            
+            # binary = torch.tensor(np.logical_not(zeroing_loss_r[i] >0.1), dtype = torch.float32)* torch.tensor(np.logical_not(r_var_r[i] <0.1), dtype = torch.float32)
+            # binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32)* torch.tensor(np.logical_not(r_var_r[i] <0.1), dtype = torch.float32)
+            binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32)
+            binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32) + torch.tensor(np.logical_not(r_var_r[i] <max_r_in_traj), dtype = torch.float32)
+            binary_for_traj_zeroing = torch.tensor(np.logical_and(np.logical_not(r_var_r[i] <max_r_in_traj), feat[i,7,:,:].detach().numpy() <np.ones((60,60))), dtype = torch.float32)
+            zeroing_loss_grad[i] = c_zero*binary_for_traj_zeroing*torch.tanh(r_var_r[i])
+            # zeroing_loss_grad[i] = c_zero*binary*torch.tanh(r_var_r[i])
+        
+        goal_svf = feat[:,7,:].float().unsqueeze(dim=1)/6.0*c_zero
+
+
         # traj_rank_weight = normalize_rank(demo_rank)
         traj_rank_weight = weights
         traj_rank_weight = traj_rank_weight.unsqueeze(dim=1)
@@ -288,7 +315,9 @@ for epoch in range(n_epoch):
         print("Mean value of two grads are ", svf_diff_var_r.mean(), zeroing_loss_grad.mean())
         # zeroing_loss_full = Variable(zeroing_loss_criterion, requires_grad=True)
         # zeroing_loss_full.backward()
-        torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float())])  # to maximize, hence add minus sign
+        # torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float()-zeroing_loss_grad.float()+goal_svf.float())])  # to maximize, hence add minus sign
+        torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float()-zeroing_loss_grad.float())])  # to maximize, hence add minus sign
+        # torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float())])
         one_hot_rank = torch.zeros((len(demo_rank)), dtype= torch.long)
         for i in range(len(demo_rank)):
             one_hot_rank[i] = int(demo_rank[i]*10)-2
@@ -364,7 +393,7 @@ for epoch in range(n_epoch):
             net_robot.eval()
             nll_test_list_human = []
             nll_test_list_robot = []
-            for test_index, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weights, full_trajs) in enumerate(test_loader_robot):
+            for test_index, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weights, full_trajs, _) in enumerate(test_loader_robot):
                 # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, past_traj_r)
                 # if not np.isnan(prev_predicted_traj_human[start_full_index:end_full_index].all()):
                 #     if not np.isnan(prev_past_traj_human[start_full_index:end_full_index]).all():
