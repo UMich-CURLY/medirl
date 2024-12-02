@@ -124,6 +124,8 @@ def traj_interp(c):
     # print("Valid traj? ", is_valid_traj(d), d.shape, c.shape)
     return np.array(d)
 
+
+
 class OffroadLoader(Dataset):
     def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3_new_cross', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
@@ -222,7 +224,7 @@ class OffroadLoader(Dataset):
                     continue
                 file = open(self.data_dir+'/'+demo + '/new_rank.txt', 'r')
                 demo_rank = float(file.read())
-                if demo_rank < 1.0: ### used to be <=0.2 normally, training only for optimal episodes
+                if demo_rank < 0.2: ### used to be <=0.2 normally, training only for optimal episodes
                     continue
                 # if (self.check_isnone(self.data_dir + '/' + item)):
                 #     continue

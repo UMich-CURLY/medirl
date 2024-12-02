@@ -22,7 +22,11 @@ import torch
 from torch.autograd import Variable
 import time
 import threading
-from PIL import Image
+from PIL import Image, ImageFile
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from std_msgs.msg import Bool, Int32MultiArray, MultiArrayLayout, MultiArrayDimension
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Pose, PointStamped, Point
 from sensor_msgs.msg import PointCloud2, PointField
@@ -37,15 +41,18 @@ torch.set_default_tensor_type('torch.DoubleTensor')
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 import ros_numpy
 resume = None
-exp_name = '7.36robot'
-resume  = 'step8000-loss1.1638-train_loss0.8232.pth'
+
+
+exp_name = '7.52robot'
+resume  = 'step3000-loss2.7445-train_loss0.2022.pth'
 GRID_RESOLUTION = 0.1
 CLEARANCE_THRESH = 0.5/GRID_RESOLUTION
 GRID_SIZE_IN_M = 6
 grid_size = int(np.floor(GRID_SIZE_IN_M/GRID_RESOLUTION))
 TRAJ_LEN = 10
 USE_VEL = True
-VISUALIZE = True
+VISUALIZE = False
+SAVE_GIFS = True
 if VISUALIZE:
     host = os.environ['HOSTNAME']
     vis = visdom.Visdom(env='v{}-{}'.format(exp_name, host), server='http://127.0.0.1', port=8099)
@@ -243,6 +250,22 @@ def auto_pad_past(traj):
         output = np.vstack((traj, pad_array))
         # print("Output is ", output)
         return output
+    
+def make_plot_and_save(data, filename):
+    fig = plt.figure(figsize=(6, 6))
+    plt.imshow(data, cmap='gray', interpolation='nearest')
+    plt.colorbar()  # Optional: Add a colorbar to the side
+
+    # Save the heatmap to a temporary file
+    plt.savefig(filename, bbox_inches='tight')
+    plt.close()  # Close the plot to free memory
+    return
+
+def get_concat_h(im1, im2):
+    dst = Image.new('RGB', (im1.width + im2.width, im1.height))
+    dst.paste(im1, (0, 0))
+    dst.paste(im2, (im1.width, 0))
+    return dst
 
 class irl():
     def __init__(self, grid_size=grid_size):
@@ -268,6 +291,7 @@ class irl():
         discount = 0.9
         self._pub_traj = rospy.Publisher("irl_traj", Int32MultiArray, queue_size = 1)
         self._wait_traj = rospy.Publisher("wait_for_traj", Bool, queue_size = 1)
+        self.map_server = rospy.Subscriber("/reload_map_server", Bool, self.save_gif, queue_size = 1)
         self.model = offroad_grid.OffroadGrid(grid_size, discount)
         self.n_states = self.model.n_states
         self.n_actions = self.model.n_actions
@@ -289,6 +313,8 @@ class irl():
         self.prev_traj = None
         self.prev_robot_pose = None
         self.human_vel = 0.0
+        self.im_array = []
+        self.gif_counter = 0
         print("Initialized")
 
     def is_start(self, msg):
@@ -386,6 +412,44 @@ class irl():
             
             # visualize_batch(self.robot_traj, [sampled_traj], feat, r_var, [values_sample], np.zeros([32,32]), step, vis, grid_size, train=False)
             traj = traj_interp(np.array(sampled_traj))
+            if SAVE_GIFS:
+                img = feat[:,0:3].numpy()
+                img = img[0]
+                data = img[0]
+                for i in range(len(traj)):
+                    data[int(traj[i][0]), int(traj[i][1])] = 4.0
+                make_plot_and_save(data, 'heatmap_temp.png')
+                reward_data = r_var[:].detach().numpy()
+                reward_data = reward_data[0][0]
+                make_plot_and_save(reward_data, 'reward_temp.png')
+                img = Image.open('heatmap_temp.png')
+                reward_img = Image.open('reward_temp.png')
+                full_img = get_concat_h(img, reward_img)
+                data = feat[:,3].numpy()[0]
+                make_plot_and_save(data, 'heatmap_temp_traj.png')
+                img = Image.open('heatmap_temp_traj.png')
+                full_img = get_concat_h(full_img, img)
+                data = feat[:,4].numpy()[0]
+                make_plot_and_save(data, 'heatmap_temp_traj_r.png')
+                img = Image.open('heatmap_temp_traj_r.png')
+                full_img = get_concat_h(full_img, img)
+                data = feat[:,5].numpy()[0]
+                make_plot_and_save(data, 'heatmap_temp_heading.png')    
+                img = Image.open('heatmap_temp_heading.png')
+                full_img = get_concat_h(full_img, img)
+                data = feat[:,6].numpy()[0]
+                make_plot_and_save(data, 'heatmap_temp_vel.png')
+                img = Image.open('heatmap_temp_vel.png')
+                full_img = get_concat_h(full_img, img)
+                data = feat[:,7].numpy()[0]
+                make_plot_and_save(data, 'heatmap_temp_goal.png')
+                img = Image.open('heatmap_temp_goal.png')
+                full_img = get_concat_h(full_img, img)
+
+                # for i in range(len(traj_final)):
+                #     img.putpixel((int(traj_final[i][0])*10, int(traj_final[i][1])*10), (255,0,0))
+                # img.save('heatmap_temp_traj.png')
+                self.im_array.append(full_img)
             self.prev_traj = traj
             self.prev_robot_pose = self.robot_traj.copy()
         else:
@@ -421,7 +485,14 @@ class irl():
 
         mutex.release()
 
-    
+    def save_gif(self, msg):
+        print("Saving gif")
+        if len(self.im_array) == 0:
+            return
+        self.gif_counter+=1
+        self.im_array[0].save('robo_frames/'+exp_name+'/result'+str(self.gif_counter)+'.gif', save_all=True, append_images=self.im_array[1:], loop=0)
+        self.im_array = []
+        return
 
     def people_callback(self, msg):
         mutex.acquire(blocking=True)
@@ -508,9 +579,10 @@ class irl():
 
     
 if __name__ == "__main__":
+        feature = irl()
         rospy.init_node("Get_Traj",anonymous=False)
         # initpose_pub = rospy.Publisher("/initialpose", PoseWithCovarianceStamped, queue_size=1)
-        feature = irl()
+        
         update = 0
         while(not rospy.is_shutdown()):
             rospy.spin()

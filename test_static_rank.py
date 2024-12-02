@@ -26,18 +26,18 @@ grid_size = 60
 # ImageFile.LOAD_TRUNCATED_IMAGES = True
 discount = 0.9
 batch_size = 1
-n_worker = 2
+n_worker = 0
 #exp = '6.24'
 #resume = 'step700-loss0.6980162681374217.pth'
 #net = HybridDilated(feat_out_size=25, regression_hidden_size=64)
 
-exp_name = '7.35robot'
-resume  = 'step1700-loss2.2381-train_loss0.1669.pth'
+exp_name = '7.46robot'
+resume  = 'step7000-loss0.8566-train_loss0.9289.pth'
 net = RewardNet(n_channels=8, n_classes=1, n_kin = 0, feat_out_size=25)
 # self.net.init_weights()
 checkpoint = torch.load(os.path.join('exp', exp_name, resume))
 net.load_state_dict(checkpoint['net_state'])
-
+VISUALIZE_AND_SAVE = False
 # def rl(future_traj_sample, r_sample, model, grid_size):
 #     svf_demo_sample = model.find_demo_svf(future_traj_sample)
 #     values_sample = model.find_optimal_value(r_sample, 0.01)
@@ -51,9 +51,12 @@ net.load_state_dict(checkpoint['net_state'])
 #     dist_sample = model.compute_hausdorff_loss(policy, future_traj_sample, n_samples=1000)
 #     return nll_sample, svf_diff_var_sample, values_sample, dist_sample
 
-def make_plot_and_save(data, filename):
+def make_plot_and_save(data, filename, use_clim = True):
     fig = plt.figure(figsize=(6, 6))
-    plt.imshow(data, cmap='hot', interpolation='nearest')
+    plt.imshow(data, cmap='gray', interpolation='nearest')
+    plt.axis('off')
+    if use_clim:
+        plt.clim(0,4)
     plt.colorbar()  # Optional: Add a colorbar to the side
 
     # Save the heatmap to a temporary file
@@ -227,7 +230,7 @@ model = offroad_grid.OffroadGrid(grid_size, discount)
 n_states = model.n_states
 n_actions = model.n_actions
 
-loader = OffroadLoader(grid_size=grid_size, train=False)
+loader = OffroadLoader(grid_size=grid_size, train=True)
 loader = DataLoader(loader, num_workers=n_worker, batch_size=batch_size, shuffle=False)
 loss_cma = 0
 train_loss_win = vis.line(X=np.array([-1]), Y=np.array([loss_cma]),
@@ -304,7 +307,14 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
         # print("Expected return current is ", expected_return_current)
     r_vars_zeroed = r_var_r.clone()
     r_vars_zeroed = r_vars_zeroed*zeroing_loss_r
-
+    svf_demo_sample = model.find_demo_svf(list(robot_traj[0].long()))
+    
+    # values_sample = model.find_optimal_value(r_var_r[0], 0.1)
+    # policy = model.find_stochastic_policy(values_sample[0], r_var_r[0][0])
+    c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
+    # c_zero = np.zeros(c_zero.shape)
+    svf_expected = svf_diff_var_r[0][0].numpy() - svf_demo_sample.reshape((60,60))
+    
     c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
     # c_zero = np.zeros(c_zero.shape)
     grad_zeroed = torch.zeros(r_vars_zeroed.shape)
@@ -326,30 +336,58 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
         if abs(current_fol_number-counter_crossing)<5:
             visualize_counter = True
             break
-    if visualize_counter:
-        visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, zeroing_loss_r, current_fol_number, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r, rank_list= demo_rank)
-    vis.line(X=np.array([step]), Y=np.array([loss]), win=train_loss_win, update='append')
+    # if visualize_counter:
+    #     visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, zeroing_loss_r, current_fol_number, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r, rank_list= demo_rank)
+    # vis.line(X=np.array([step]), Y=np.array([loss]), win=train_loss_win, update='append')
     print("Loss is ", loss) 
+    folder = 'robo_frames/'+demo+'/'+str(current_fol_number)+'/'
+    __ = os.system("mkdir -p " + folder)
     step += 1
-    traj_final = sampled_trajs_r[0]
+    traj = sampled_trajs_r[0]
     img = feat_r[:,0:3].numpy()
     img = img[0]
     data = img[0]
-    for i in range(len(traj_final)):
-        data[int(traj_final[i][0]), int(traj_final[i][1])] = 4.0
-
-    make_plot_and_save(data, 'heatmap_temp.png')
+    # for i in range(len(traj)):
+    #     data[int(traj[i][0]), int(traj[i][1])] = 4.0
+    make_plot_and_save(data, folder+'heatmap_temp_r.png')
+    make_plot_and_save(img[1], folder+'heatmap_temp_g.png')
+    make_plot_and_save(img[2], folder+'heatmap_temp_b.png')
     reward_data = r_var_r[:].detach().numpy()
     reward_data = reward_data[0][0]
-    make_plot_and_save(reward_data, 'reward_temp.png')
-# Open the saved image using PIL
-    img = Image.open('heatmap_temp.png')
-    reward_img = Image.open('reward_temp.png')
+    make_plot_and_save(reward_data, folder+'reward_temp.png')
+    img = Image.open(folder+'heatmap_temp_r.png')
+    reward_img = Image.open(folder+'reward_temp.png')
     full_img = get_concat_h(img, reward_img)
+    data = feat_r[:,3].numpy()[0]
+    make_plot_and_save(data, folder+'heatmap_temp_traj.png')
+    img = Image.open(folder+'heatmap_temp_traj.png')
+    full_img = get_concat_h(full_img, img)
+    data = feat_r[:,4].numpy()[0]
+    make_plot_and_save(data, folder+'heatmap_temp_traj_r.png')
+    img = Image.open(folder+'heatmap_temp_traj_r.png')
+    full_img = get_concat_h(full_img, img)
+    data = feat_r[:,5].numpy()[0]
+    make_plot_and_save(data, folder+'heatmap_temp_heading.png')    
+    img = Image.open(folder+'heatmap_temp_heading.png')
+    full_img = get_concat_h(full_img, img)
+    data = feat_r[:,6].numpy()[0]
+    make_plot_and_save(data, folder+'heatmap_temp_vel.png')
+    img = Image.open(folder+'heatmap_temp_vel.png')
+    full_img = get_concat_h(full_img, img)
+    data = feat_r[:,7].numpy()[0]
+    make_plot_and_save(data, folder+'heatmap_temp_goal.png')
+    img = Image.open(folder+'heatmap_temp_goal.png')
+    full_img = get_concat_h(full_img, img)
+    make_plot_and_save(svf_expected.reshape((60,60)), folder+'svf_expected.png', use_clim = False)
+    img = Image.open(folder+'svf_expected.png')
+    # full_img = get_concat_h(full_img, img)
+    make_plot_and_save(svf_demo_sample.reshape((60,60)), folder+'svf_demo_sample.png', use_clim = False)
     # for i in range(len(traj_final)):
     #     img.putpixel((int(traj_final[i][0])*10, int(traj_final[i][1])*10), (255,0,0))
     # img.save('heatmap_temp_traj.png')
     im_array.append(full_img)
+    np.save(image_fol+'/robot_traj_post.npy', robot_traj)
+
     # plt_frames.append([plt.imshow(data, cmap='hot', interpolation='nearest', animated=True)])
 
 # ani = animation.ArtistAnimation(fig, plt_frames, interval=50, blit=True,
@@ -358,5 +396,5 @@ im_array[0].save('robot_traj.gif', save_all=True, append_images=im_array[1:])
 # ani.save("robot_traj.mp4")
 nll_test_robot = sum(nll_test_list_robot) / len(nll_test_list_robot)
 print('main. test nll {}'.format(nll_test_robot))
-visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, r_vars_zeroed, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r)
+# visualize_batch([robot_traj[0]], robot_traj, feat_r, r_var_r, values_list_r, r_vars_zeroed, step, vis, grid_size, train=False, policy_sample_list=sampled_trajs_r)
 
