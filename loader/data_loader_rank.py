@@ -553,10 +553,10 @@ class OffroadLoader(Dataset):
                 full_traj_array[one_hot_rank-2] = robot_traj_full
             if item_num > self.noise_data_counter:
                 noise_num = item_num//self.noise_data_counter
-                if noise_num == 0:
-                    traj_folder = self.image_fol+"/robot_noise_traj.npy"
-                else:
-                    traj_folder = self.image_fol+"/robot_noise_traj"+str(noise_num-1)+".npy"
+                # if noise_num == 0:
+                #     traj_folder = self.image_fol+"/robot_noise_traj.npy"
+                # else:
+                traj_folder = self.image_fol+"/robot_noise_traj"+str(noise_num)+".npy"
                 try:
                     with open(traj_folder, 'rb') as f:
                         full_traj_argh = np.load(f)

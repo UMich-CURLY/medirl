@@ -16,3 +16,4 @@ exp/
 *.code-workspace
 *.gif
 *.png
+my_venv/

@@ -138,9 +138,9 @@ def zeroing_loss(c_zero, zeroing_loss):
 pre_train_weight = None
 vis_per_steps = 10000
 test_per_steps = 1000
-# resume = "step7000-loss0.8566-train_loss0.9289.pth"
+# resume = "step2000-loss1.9081-train_loss0.2406.pth"
 resume = None
-exp_name = '7.54'
+exp_name = '7.58'
 grid_size = 60
 discount = 0.9
 lr = 5e-4
@@ -256,7 +256,8 @@ for epoch in range(n_epoch):
         # goal_svf = feat[:,5,:].float().unsqueeze(dim=1)/6.0
         # feat = feat[:,:5, :]
         # print(feat_test)
-        feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, robot_past_traj)
+        # feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, robot_past_traj)
+        # feat[:,4,:] = torch.zeros(feat[:,4,:].shape)
         nll_list_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, expected_return, zeroing_loss_r = pred(feat, robot_traj, net_robot, n_states, model_robot, grid_size, full_traj)
         # prev_past_traj_robot[start_full_index:end_full_index] = past_traj_r
         # prev_predicted_traj_robot[start_full_index:end_full_index] = auto_pad_future(grid_size, np.array(sampled_trajs_r))
@@ -267,8 +268,16 @@ for epoch in range(n_epoch):
         # the normally used loss.backward() only works when loss is a scalar
         c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
         c_zero = min(1e-3, abs(svf_diff_var_r.max())*0.1)
+        # if svf_diff_var_r.max() <3
+        c_zero = 1e-6
         # c_zero = np.zeros(c_zero.shape)
         # c_zero = svf_diff_var_r.mean()
+        c_zero = min(1e-3, abs(svf_diff_var_r.max())*0.1)
+        if epoch > n_epoch/2:
+            c_zero = 1
+        else:
+            c_zero = 0.0
+        c_zero = 1
         zeroing_loss_grad = torch.zeros(r_var_r.shape)
         traj_based_zeroing = torch.zeros(r_var_r.shape)
         max_r_in_traj = -1000
@@ -296,7 +305,9 @@ for epoch in range(n_epoch):
             # binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32)* torch.tensor(np.logical_not(r_var_r[i] <0.1), dtype = torch.float32)
             binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32)
             binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32) + torch.tensor(np.logical_not(r_var_r[i] <max_r_in_traj), dtype = torch.float32)
+            binary_for_traj_zeroing = torch.tensor(np.logical_and(binary_for_traj_zeroing, feat[i,7,:,:].detach().numpy() <np.ones((60,60))), dtype = torch.float32)
             binary_for_traj_zeroing = torch.tensor(np.logical_and(np.logical_not(r_var_r[i] <max_r_in_traj), feat[i,7,:,:].detach().numpy() <np.ones((60,60))), dtype = torch.float32)
+        
             zeroing_loss_grad[i] = c_zero*binary_for_traj_zeroing*torch.tanh(r_var_r[i])
             # zeroing_loss_grad[i] = c_zero*binary*torch.tanh(r_var_r[i])
         
@@ -316,8 +327,8 @@ for epoch in range(n_epoch):
         # zeroing_loss_full = Variable(zeroing_loss_criterion, requires_grad=True)
         # zeroing_loss_full.backward()
         # torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float()-zeroing_loss_grad.float()+goal_svf.float())])  # to maximize, hence add minus sign
-        torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float()-zeroing_loss_grad.float())])  # to maximize, hence add minus sign
-        # torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float())])
+        # torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float()-zeroing_loss_grad.float())])  # to maximize, hence add minus sign
+        torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float())])
         one_hot_rank = torch.zeros((len(demo_rank)), dtype= torch.long)
         for i in range(len(demo_rank)):
             one_hot_rank[i] = int(demo_rank[i]*10)-2

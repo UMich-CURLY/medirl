@@ -31,8 +31,8 @@ n_worker = 2
 #resume = 'step700-loss0.6980162681374217.pth'
 #net = HybridDilated(feat_out_size=25, regression_hidden_size=64)
 
-exp_name = '7.51robot'
-resume  = 'step13000-loss1.4111-train_loss0.8876.pth'
+exp_name = '7.58robot'
+resume  = 'step23000-loss1.1034-train_loss0.654.pth'
 net = RewardNet(n_channels=8, n_classes=1, n_kin = 0, feat_out_size=25)
 # self.net.init_weights()
 checkpoint = torch.load(os.path.join('exp', exp_name, resume))
@@ -264,7 +264,7 @@ model = offroad_grid.OffroadGrid(grid_size, discount)
 n_states = model.n_states
 n_actions = model.n_actions
 
-loader = OffroadLoader(grid_size=grid_size, train=False)
+loader = OffroadLoader(grid_size=grid_size, train=True)
 loader = DataLoader(loader, num_workers=n_worker, batch_size=batch_size, shuffle=False)
 loss_cma = 0
 train_loss_win = vis.line(X=np.array([-1]), Y=np.array([loss_cma]),
@@ -323,6 +323,7 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     # traj_upper = traj_upper.astype(np.int64)
     
     feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, robot_past_traj)
+    feat_r[:,4,:] = torch.zeros(feat_r[:,4,:].shape)
     # feat_h[:,4,:] = get_traj_feature(feat_h[:,0], grid_size, past_traj_h)
     # if not np.isnan(prev_predicted_traj_robot[start_full_index:end_full_index]).all():
     #     if not np.isnan(prev_past_traj_robot[start_full_index:end_full_index]).all():
@@ -348,6 +349,7 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
     c_zero = min(1e-3, abs(svf_diff_var_r.max())*0.1)
     c_zero = 1e-3
+    print("The max of svf diff is ", svf_diff_var_r.max())
     zeroing_loss_grad = torch.zeros(r_var_r.shape)
     traj_based_zeroing = torch.zeros(r_var_r.shape)
     max_r_in_traj = -1000
@@ -416,6 +418,8 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     reward_data = r_var_r[:].detach().numpy()
     reward_data = reward_data[0][0]
     make_plot_and_save(reward_data, 'reward_temp.png')
+    np.save("reward_60x60.npy", reward_data.reshape((60,60)))
+
 # Open the saved image using PIL
     img = Image.open('heatmap_temp.png')
     reward_img = Image.open('reward_temp.png')
