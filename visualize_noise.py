@@ -1,7 +1,8 @@
-from PIL import Image
+from PIL import Image, ImageDraw
 import numpy as np
 from IPython import embed
 import os
+import math
 def get_grid_map(image_fol):
     grid_img = np.array(Image.open(image_fol+"/grid_map.png"))[:,:,0:3]
     return grid_img
@@ -15,7 +16,7 @@ def get_robot_traj(image_fol, noise_num):
     return robot_traj
 
 def get_raw_img(image_fol):
-    raw_img = np.array(Image.open(image_fol+"/raw_img.png"))[:,:,0:3]
+    raw_img = np.array(Image.open(image_fol+"/new_obs_raw.png"))[:,:,0:3]
     return raw_img
 
 
@@ -83,9 +84,9 @@ def annotate_image(grid_img, robot_traj_grid):
     # grid_img[point[0], point[1]] = [255,0,0]
     return grid_img
 
-def annotate_raw_image(raw_img, robot_traj_grid):
+def annotate_raw_image(raw_img, robot_traj_grid, raw_img_size, counter):
     grid_img_res = 0.1
-    img_res = 6/raw_img.shape[0]
+    img_res = 6/raw_img_size
     num_of_points = len(robot_traj_grid)
     
     new_points = []
@@ -102,38 +103,136 @@ def annotate_raw_image(raw_img, robot_traj_grid):
         new_points.append(point)
     new_points = traj_interp(np.array(new_points))
     color = np.linspace(0, 255, new_points.shape[0])
-    i =0 
-    for point in new_points:
-        raw_img[point[0], point[1]] = [0,0,color[i]]
-        i += 1
-    # grid_img[point[0], point[1]] = [255,0,0]
-    raw_img[point[0], point[1]] = [0, 255, 0]
+    # i =0 
+    # for point in new_points:
+    #     raw_img[point[0], point[1]] = [0,0,color[i]]
+    #     i += 1
+    # # grid_img[point[0], point[1]] = [255,0,0]
+    # raw_img[point[0], point[1]] = [0, 255, 0]
+    colors = [
+        (255, 255, 0),    # Bright Yellow
+        (0, 255, 255),    # Cyan
+        (255, 0, 255),    # Magenta
+        (0, 255, 0),      # Lime Green
+        (255, 165, 0),    # Orange
+        (255, 255, 255),   # White
+        (255, 0 , 0)
+    ]
+    marker_color = (255, 0, 0)  # Red color
+    marker_size = 0  # Half the length of the "X" arms
+    line_width = 2  # Line thickness
+    raw_img = Image.fromarray(np.uint8(raw_img))
+    draw = ImageDraw.Draw(raw_img)
+    for i in range(len(new_points)-1):
+        [y1,x1] = new_points[i]
+        [y2,x2] = new_points[i+1]
+        draw.line((x1 - marker_size, y1 - marker_size, x2 + marker_size, y2 + marker_size), fill=colors[counter], width=line_width)
+        
     return raw_img
 
+def draw_star(draw, center, raw_img_size, fill="magenta", outline="black", width=2):
+    """
+    Draws a star at the specified center with the given size.
+    
+    :param draw: ImageDraw object to draw on.
+    :param center: Tuple (x, y) for the center of the star.
+    :param size: Radius of the star.
+    :param fill: Fill color of the star.
+    :param outline: Outline color of the star.
+    :param width: Outline width of the star.
+    """
+    grid_img_res = 0.1
+    img_res = 6/raw_img_size
+    size = 14
+    for point in center:
+        if point[0] <0:
+            point[0] = 0
+        if point[1] <0:
+            point[1] = 0
+        if point[0] >= 60:                                                                          
+            point[0] = 59
+        if point[1] >= 60:
+            point[1] = 59
+        point = grid_coord_to_raw(point, img_res, grid_img_res)
+    x, y = point
+    points = []
+    for i in range(10):  # 5 points for the star, alternating between outer and inner radius
+        angle = math.pi / 5 * i  # Calculate angle for each point
+        r = size if i % 2 == 0 else size / 2  # Outer radius for even indices, inner radius for odd
+        px = x + r * math.cos(angle)
+        py = y - r * math.sin(angle)
+        points.append((px, py))
+    
+    # Draw the star
+    draw.polygon(points, fill=fill, outline=outline)
+
+
 def main():
-    data_folder = "data/irl_sept_24_3_new_cross_noised/train/demo_3"
-    for sub_folder in os.listdir(data_folder):
-        if not os.path.isdir(data_folder + "/" + sub_folder):
+    full_data_folder = "data/irl_sept_24_3_new_cross_noised/train/"
+    demos =  os.listdir(full_data_folder)
+    demos.remove('metrics_data.csv')
+    demos.sort(key=lambda x:int(x[5:]))
+    for demo in demos:
+        data_folder = full_data_folder+demo
+        with open(data_folder+"/new_rank.txt", 'r') as file:
+            new_rank = float(file.read())
+        if new_rank <0.2:
             continue
-        folder = data_folder + "/" + sub_folder
-        grid_img = get_grid_map(folder)
-        raw_img = get_raw_img(folder)
-        for noise_counter in range(0, 6):
-            robot_traj_grid = get_robot_traj(folder, noise_counter)
-            grid_img = annotate_image(grid_img, robot_traj_grid)
-            raw_img = annotate_raw_image(raw_img, robot_traj_grid)
-        Image.fromarray(np.uint8(grid_img)).save(folder+"/full_noise_overlay.png")
-        Image.fromarray(np.uint8(raw_img)).save(folder+"/full_noise_overlay_raw.png")
-        
-        try: 
-            robot_traj_no_noise = np.load(folder+"/robot_"+"traj_post.npy")
-            robot_traj_no_noise = transpose_traj(robot_traj_no_noise[0])
+        for sub_folder in os.listdir(data_folder):
+            if not os.path.isdir(data_folder + "/" + sub_folder):
+                continue
+            folder = data_folder + "/" + sub_folder
+            grid_img = get_grid_map(folder)
+            raw_img = get_raw_img(folder)
+            raw_img_size = raw_img.shape[0]
+            #### Noise annotation ####
+            # for noise_counter in range(0, 6):
+            #     robot_traj_grid = get_robot_traj(folder, noise_counter)
+            #     grid_img = annotate_image(grid_img, robot_traj_grid)
+            #     raw_img = annotate_raw_image(raw_img, robot_traj_grid, raw_img_size, noise_counter)
+            # Image.fromarray(np.uint8(grid_img)).save(folder+"/full_noise_overlay.png")
+            # raw_img.save(folder+"/full_noise_overlay_raw.png")
+            
+            with open(folder+"/robot_past_traj.npy", 'rb') as f:
+                full_traj = np.load(f)
+            
+            robot_past_traj = full_traj
+            file = open(folder+ '/new_crossing_count.txt', 'r')
+            counter_crossing_data = file.read().split('\n')
+            number_of_stops = len(counter_crossing_data)
+            current_fol_number = int(folder.split('/')[-1])
+            # print("Number of stops ", number_of_stops, counter_crossing_data)
+            for counter_crossing in counter_crossing_data:
+                counter_crossing = int(counter_crossing)
+                if counter_crossing >= current_fol_number:
+                    break
+            counter_fol = data_folder + '/' + str(counter_crossing)
+            print("counter_fol", counter_fol)
+            robot_past_at_crossing = np.load(counter_fol+"/robot_past_traj.npy")
+            robot_future = robot_past_at_crossing[len(robot_past_traj):]
+            robot_traj_no_noise = robot_future
+            robot_traj_no_noise = transpose_traj(robot_traj_no_noise)
             grid_img = get_grid_map(folder)
             grid_img = annotate_image(grid_img, np.array(robot_traj_no_noise, dtype = int))
-            Image.fromarray(np.uint8(grid_img)).save(folder+"/full_noise_overlay_no_noise.png")
+            # Image.fromarray(np.uint8(grid_img)).save(folder+"/full_noise_overlay_no_noise.png")
+            raw_img = get_raw_img(folder)
+            raw_img = annotate_raw_image(raw_img, robot_traj_no_noise, raw_img_size, 6)
+            # raw_img.save(folder+"/overlay_raw_no_noise.png")
+            robot_past = np.load(folder+"/robot_past_traj.npy")
+            robot_past = transpose_traj(robot_past)
+            raw_img = annotate_raw_image(raw_img, robot_past,raw_img_size, 0)
+            human_past = np.load(folder+"/human_past_traj.npy")
+            human_past = transpose_traj(human_past)
+            raw_img = annotate_raw_image(raw_img, human_past,raw_img_size, 1)
+            
+            #### Annotate robot Goal ####
+            raw_img = Image.fromarray(np.uint8(raw_img))
+            draw = ImageDraw.Draw(raw_img)
+            goal = np.load(folder+"/goal.npy")
+            # goal = transpose_traj(np.array([goal]))
+            draw_star(draw, [goal], raw_img_size)
+            raw_img.save(folder+"/get_rank.jpg")
             print(folder)
-        except:
-            pass
 if __name__ == "__main__":
     main()
 

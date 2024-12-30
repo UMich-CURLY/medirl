@@ -168,7 +168,7 @@ def pred(feat, traj, net, n_states, model, grid_size, full_trajs):
     return nll_list, r_var, svf_diff_var, values_list, policy_sample_list, expected_return, zeroing_loss
 
 def get_returns(traj_samples, r_sample, model):
-    expected_returns = np.zeros((9, 1))
+    expected_returns = np.zeros((traj_samples.shape[0], 1))
     i = 0
     for traj_sample in traj_samples:
         traj_sample = traj_sample[~np.isnan(traj_sample).any(axis=1)]  # remove appended NAN rows

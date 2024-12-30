@@ -127,7 +127,7 @@ def traj_interp(c):
 
 
 class OffroadLoader(Dataset):
-    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3_new_cross_noised', pre_train=False, tangent=False,
+    def __init__(self, grid_size, train=True, demo=None, datadir='data/irl_sept_24_3_gpt_agent', pre_train=False, tangent=False,
                  more_kinematic=None, human = False):
         assert grid_size % 2 == 0, "grid size must be even number"
         self.grid_size = grid_size
@@ -363,6 +363,8 @@ class OffroadLoader(Dataset):
             if self.training:
                 weight_file = open(self.image_fol+ '/weight.txt', 'r')
                 weight = float(weight_file.read())
+                file = open(self.image_fol+ '/chat_gpt_rank.txt', 'r')
+                demo_rank = float(file.read())
             else:
                 weight = 0.2
         except:
@@ -507,7 +509,7 @@ class OffroadLoader(Dataset):
         
         current_fol_number = int(self.image_fol.split('/')[-1])
         demo_num = int(self.image_fol.split('/')[-2].split('_')[1])
-        full_traj_array = np.NaN*np.ones((9,FIXED_LEN,2))
+        full_traj_array = np.NaN*np.ones((6,FIXED_LEN,2))
         if "train" in self.image_fol:
             for ep in self.ep_list:
                 if demo_num in self.ep_list[ep]:
@@ -547,12 +549,12 @@ class OffroadLoader(Dataset):
                 # robot_traj_full = self.auto_pad_future_from_past_other(robot_traj_full[:, :2], robot_pos, new_counter_crossing, self.data_dir+'/demo_'+str(demo)+ '/'+str(current_fol_number))
                 robot_traj_full = self.auto_pad_future_from_past_counter(np.array(robot_traj_full[:, :2], dtype=np.float32), robot_past_traj_now, new_counter_crossing, self.data_dir+'/demo_'+str(demo)+ '/'+str(current_fol_number_now))
                 # print("Robot traj full is", robot_traj_full)
-                file = open(self.data_dir+'/demo_'+str(demo)+ '/new_rank.txt', 'r')
+                file = open(self.data_dir+'/demo_'+str(demo)+  '/'+str(current_fol_number_now) + '/chat_gpt_rank.txt', 'r')
                 demo_rank_full = float(file.read())
-                if demo_rank_full <=0.2:
-                    continue
-                one_hot_rank = int(demo_rank_full*10)
-                full_traj_array[one_hot_rank-2] = robot_traj_full
+                # if demo_rank_full <=0.2:
+                #     continue
+                one_hot_rank = int(demo_rank_full)
+                full_traj_array[one_hot_rank] = robot_traj_full
             if item_num > self.noise_data_counter:
                 noise_num = item_num//self.noise_data_counter
                 # if noise_num == 0:

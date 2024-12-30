@@ -1,5 +1,5 @@
 import mdp.offroad_grid as offroad_grid
-from loader.data_loader_rank import OffroadLoader
+from loader.data_loader_gpt import OffroadLoader
 from torch.utils.data import DataLoader
 import numpy as np
 
@@ -205,7 +205,7 @@ vis_per_steps = 10000
 test_per_steps = 500
 # resume = "step2000-loss1.6138-train_loss0.2134.pth"
 resume = None
-exp_name = '7.61'
+exp_name = '8.12'
 grid_size = 60
 discount = 0.9
 lr = 5e-4
@@ -214,7 +214,7 @@ batch_size = 8
 n_worker = 2
 use_gpu = True
 
-loss_criterion = torch.nn.CrossEntropyLoss(weight = torch.tensor([1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0]).float())
+loss_criterion = torch.nn.CrossEntropyLoss(weight = torch.tensor([1.0,1.0,1.0,1.0,1.0,0.0]).float())
 # loss_criterion = torch.nn.CrossEntropyLoss()
 # loss_criterion = torch.nn.L1Loss()
 loss_criterion = BilateralLoss(6.0, 0.01, 9)
@@ -321,8 +321,7 @@ for epoch in range(n_epoch):
         # goal_svf = feat[:,5,:].float().unsqueeze(dim=1)/6.0
         # feat = feat[:,:5, :]
         # print(feat_test)
-        # feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, robot_past_traj)
-        # feat[:,4,:] = torch.zeros(feat[:,4,:].shape)
+        feat[:,4,:] = get_traj_feature(feat[:,0], grid_size, robot_past_traj)
         nll_list_r, r_var_r, svf_diff_var_r, values_list_r, sampled_trajs_r, expected_return, zeroing_loss_r = pred(feat, robot_traj, net_robot, n_states, model_robot, grid_size, full_traj)
         # prev_past_traj_robot[start_full_index:end_full_index] = past_traj_r
         # prev_predicted_traj_robot[start_full_index:end_full_index] = auto_pad_future(grid_size, np.array(sampled_trajs_r))
@@ -333,24 +332,13 @@ for epoch in range(n_epoch):
         # the normally used loss.backward() only works when loss is a scalar
         c_zero = get_traj_length(robot_traj)/(grid_size*grid_size)
         c_zero = min(1e-3, abs(svf_diff_var_r.max())*0.1)
-<<<<<<< HEAD
         # if epoch > n_epoch/2:
         #     c_zero = 1e-3
         # else:
         #     c_zero = 0.0
         # c_zero = 1e-3
-=======
-        # if svf_diff_var_r.max() <3
-        c_zero = 1e-6
->>>>>>> c2c9078837be6383f4e10015545bdf45fcda8628
         # c_zero = np.zeros(c_zero.shape)
         # c_zero = svf_diff_var_r.mean()
-        c_zero = min(1e-3, abs(svf_diff_var_r.max())*0.1)
-        if epoch > n_epoch/2:
-            c_zero = 1
-        else:
-            c_zero = 0.0
-        c_zero = 1
         zeroing_loss_grad = torch.zeros(r_var_r.shape)
         traj_based_zeroing = torch.zeros(r_var_r.shape)
         max_r_in_traj = -1000
@@ -380,11 +368,6 @@ for epoch in range(n_epoch):
             binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32)
             binary_for_traj_zeroing = torch.tensor(traj_based_zeroing[i], dtype = torch.float32) + torch.tensor(np.logical_not(r_var_r[i] <max_r_in_traj), dtype = torch.float32)
             binary_for_traj_zeroing = torch.tensor(np.logical_and(binary_for_traj_zeroing, feat[i,7,:,:].detach().numpy() <np.ones((60,60))), dtype = torch.float32)
-<<<<<<< HEAD
-=======
-            binary_for_traj_zeroing = torch.tensor(np.logical_and(np.logical_not(r_var_r[i] <max_r_in_traj), feat[i,7,:,:].detach().numpy() <np.ones((60,60))), dtype = torch.float32)
-        
->>>>>>> c2c9078837be6383f4e10015545bdf45fcda8628
             zeroing_loss_grad[i] = c_zero*binary_for_traj_zeroing*torch.tanh(r_var_r[i])
             # zeroing_loss_grad[i] = c_zero*binary*torch.tanh(r_var_r[i])
         
@@ -405,11 +388,7 @@ for epoch in range(n_epoch):
         # zeroing_loss_full.backward()
         # torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float()-zeroing_loss_grad.float()+goal_svf.float())])  # to maximize, hence add minus sign
         # torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float()-zeroing_loss_grad.float())])  # to maximize, hence add minus sign
-<<<<<<< HEAD
         torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float()+goal_svf.float())])
-=======
-        torch.autograd.backward([r_var_r], [-(svf_diff_var_r.float())])
->>>>>>> c2c9078837be6383f4e10015545bdf45fcda8628
         one_hot_rank = torch.zeros((len(demo_rank)), dtype= torch.long)
         for i in range(len(demo_rank)):
             one_hot_rank[i] = int(demo_rank[i]*10)-2
@@ -421,19 +400,19 @@ for epoch in range(n_epoch):
         loss_var.backward()
         loss = loss_var.detach().numpy()
         loses.append(loss)
-        one_hot_new = torch.zeros((len(demo_rank), 9), dtype = torch.float32)
+        one_hot_new = torch.zeros((len(demo_rank), 6), dtype = torch.float32)
         # for i in range(len(demo_rank)):
         #     x = expected_return[:, i]
         #     for j in x.nonzero():
         #         one_hot_new[i, j] = 1.0/x.nonzero().shape[0]
         for i in range(len(demo_rank)):
-            one_hot_new[i, int(demo_rank[i]*10)-2] = 1.0
-        # one_hot_new = torch.tensor([0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0], dtype = torch.float32)
-        # one_hot_new = one_hot_new.repeat(len(demo_rank), 1)
-        # weight = torch.tensor([1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0], dtype = torch.float32)
-        # loss = cross_entropy_prob(torch.t(expected_return), one_hot_new, weight)
-        # loss_var = Variable(loss, requires_grad=True)
-        # loss_var.backward()
+            one_hot_new[i, int(demo_rank[i])] = 1.0
+        one_hot_new = torch.tensor([0.0, 1.0,2.0,3.0,4.0,5.0], dtype = torch.float32)
+        one_hot_new = one_hot_new.repeat(len(demo_rank), 1)
+        weight = torch.tensor([1.0,1.0,1.0,1.0,1.0,0.0], dtype = torch.float32)
+        loss = cross_entropy_prob(torch.t(expected_return), one_hot_new, weight)
+        loss_var = Variable(loss, requires_grad=True)
+        loss_var.backward()
         # torch.autograd.backward([r_var_r], [-traj_rank_weight.float()*(svf_diff_var_r.float())])
         ### Original loss 
         # torch.autograd.backward([r_var_r], [-svf_diff_var_r.float()])  # to maximize, hence add minus sign

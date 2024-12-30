@@ -24,15 +24,16 @@ import matplotlib.animation as animation
 # initialize param
 grid_size = 60
 # ImageFile.LOAD_TRUNCATED_IMAGES = True
-discount = 0.9
+discount = 0.98
 batch_size = 1
 n_worker = 2
 #exp = '6.24'
 #resume = 'step700-loss0.6980162681374217.pth'
 #net = HybridDilated(feat_out_size=25, regression_hidden_size=64)
 
-exp_name = '7.58robot'
-resume  = 'step23000-loss1.1034-train_loss0.654.pth'
+
+exp_name = '8.12robot'
+resume  = 'step17000-loss1.5442-train_loss0.6961.pth'
 net = RewardNet(n_channels=8, n_classes=1, n_kin = 0, feat_out_size=25)
 # self.net.init_weights()
 checkpoint = torch.load(os.path.join('exp', exp_name, resume))
@@ -50,6 +51,76 @@ net.load_state_dict(checkpoint['net_state'])
 #     nll_sample = model.compute_nll(policy, future_traj_sample)
 #     dist_sample = model.compute_hausdorff_loss(policy, future_traj_sample, n_samples=1000)
 #     return nll_sample, svf_diff_var_sample, values_sample, dist_sample
+
+class BilateralLoss(torch.nn.Module):
+    def __init__(self, sigma_spatial=5.0, sigma_color=0.1, D =3):
+        super(BilateralLoss, self).__init__()
+        self.sigma_spatial = sigma_spatial
+        self.sigma_color = sigma_color
+        self.D = D
+
+    def forward(self, images):
+        """
+        Compute the bilateral loss for a batch of images.
+
+        Args:
+        - images: Tensor of shape (B, C, H, W) where B is batch size, C is number of channels.
+
+        Returns:
+        - loss: Scalar tensor representing the bilateral loss for the batch.
+        """
+        batch_size, channels, height, width = images.shape
+        # images = images / images.max()  # Normalize to [0, 1]
+
+        # Total loss accumulator
+        total_loss = 0.0
+        pixel_losses = np.zeros((height, width))
+
+        for b in range(batch_size):
+            for c in range(channels):
+                image = images[b, c]  # Single channel image
+
+                # Initialize loss for this channel
+                loss = 0.0
+                D = self.D
+                left_index = int(np.floor(D/2))
+                right_index = int(np.ceil(D/2))
+                # Compute spatial weights for a 3x3 neighborhood
+                spatial_weights = torch.zeros((D, D), device=image.device)
+                for dx in range(-int(np.floor(D/2)), int(np.ceil(D/2))):
+                    for dy in range(-int(np.floor(D/2)), int(np.ceil(D/2))):
+                        spatial_weights[dx + 1, dy + 1] = np.exp(
+                            -(dx**2 + dy**2) / (2 * self.sigma_spatial**2)
+                        )
+
+                # Iterate over each pixel
+                for i in range(left_index, height - left_index):  # Avoid boundary pixels
+                    for j in range(left_index, width - left_index):  # Avoid boundary pixels
+                        # Extract 3x3 neighborhood
+                        neighborhood = image[i - left_index:i + right_index, j - left_index:j + right_index]
+
+                        # Compute intensity weights
+                        intensity_diff = neighborhood - image[i, j]
+                        intensity_weights = torch.exp(
+                            -(intensity_diff**2) / (2 * self.sigma_color**2)
+                        )
+
+
+                        # Combine spatial and intensity weights
+                        combined_weights = spatial_weights * intensity_weights
+
+                        # Compute bilateral loss for the current pixel
+                        pixel_loss = torch.sum(combined_weights * intensity_diff**2)
+                        pixel_losses[i, j] = pixel_loss
+                        loss += pixel_loss
+
+                # Normalize by the number of pixels in the image
+                loss /= (height * width)
+                total_loss += loss
+
+        # Normalize by the number of batches and channels
+        return total_loss / (batch_size * channels), pixel_losses
+
 
 def rasterize_image(input_image, output_size = (512, 512)):
     """
@@ -71,7 +142,7 @@ def rasterize_image(input_image, output_size = (512, 512)):
     return rasterized_image
 
 def make_plot_and_save(data, filename):
-    fig = plt.figure(figsize=(6, 6))
+    fig = plt.figure(figsize=(20, 20))
     plt.imshow(data, cmap='gray', interpolation='nearest')
     plt.colorbar()  # Optional: Add a colorbar to the side
 
@@ -84,13 +155,13 @@ def make_plot_and_save_rgb(data, filename, traj_final):
     # data = data.T
     # for i in range(3):
     #     data[:,:,i] = data[:,:,i]/np.max(data[:,:,i]) * 256
-    fig = plt.figure(figsize=(6,6))
+    fig = plt.figure(figsize=(20,20))
     for i in range(3):
         data[:,:,i] = data[:,:,i] * 255
     data = np.array(data, dtype = np.uint8)
     data = np.transpose(data, (1,0,2))
-    # for i in range(len(traj_final)):
-    #     data[int(traj_final[i][0]), int(traj_final[i][1]),:] = [0,255,0]
+    for i in range(len(traj_final)):
+        data[int(traj_final[i][0]), int(traj_final[i][1]),:] = [255,0,0]
     plt.imshow(data)
     plt.savefig(filename, bbox_inches='tight')
     plt.close()
@@ -269,6 +340,7 @@ loader = DataLoader(loader, num_workers=n_worker, batch_size=batch_size, shuffle
 loss_cma = 0
 train_loss_win = vis.line(X=np.array([-1]), Y=np.array([loss_cma]),
                          opts=dict(xlabel='steps', ylabel='loss', title='train loss'))
+
 def compute_return(reward, traj):
         total_reward = 0
         discount = 1
@@ -288,7 +360,7 @@ returns_list = []
 im_array = []
 plt_frames = []
 prev_demo = "demo_0"
-
+loss_criterion = BilateralLoss(6.0, 0.01, 9)
 for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weights,  full_trajs, robot_traj_all) in enumerate(loader):
     # feat_r[:,4,:] = get_traj_feature(feat_r[:,0], grid_size, past_traj_r)
     # if not np.isnan(prev_predicted_traj_human[start_full_index:end_full_index].all()):
@@ -301,7 +373,7 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     if prev_demo != demo:
         # embed()
         if not len(im_array) == 0: 
-            im_array[0].save('robo_frames/robot_traj_'+prev_demo+'.gif', save_all=True, append_images=im_array[1:], loop = 0)
+            im_array[0].save('robo_frames/Only9/7.62robot/robot_traj_'+prev_demo+'.gif', save_all=True, append_images=im_array[1:], loop = 0)
             im_array = []
         prev_demo = demo 
 
@@ -383,6 +455,7 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     # c_zero = np.zeros(c_zero.shape)
     svf_expected = svf_diff_var_r[0][0].numpy() - svf_demo_sample.reshape((60,60))
     grad_zeroed = torch.zeros(r_vars_zeroed.shape)
+    
     # for i in range(len(c_zero)):
     #     grad_zeroed[i] = c_zero[i]*(torch.ones(zeroing_loss_r[i].shape)-zeroing_loss_r[i])
     # # traj_rank_weight = normalize_rank(demo_rank)
@@ -406,6 +479,8 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     vis.line(X=np.array([step]), Y=np.array([loss]), win=train_loss_win, update='append')
     print("Loss is ", loss) 
     print("C zero is ", c_zero)
+    loss, pixel_loss = loss_criterion(r_var_r)
+    print("Loss is ", loss, end='\r')
     step += 1
     traj_final = sampled_trajs_r[0]
     img = feat_r[:,0:3].numpy()
@@ -424,10 +499,10 @@ for step, (feat_r, robot_traj, human_past_traj, robot_past_traj, demo_rank, weig
     img = Image.open('heatmap_temp.png')
     reward_img = Image.open('reward_temp.png')
     full_img = get_concat_h(img, reward_img)
-    make_plot_and_save(svf_demo_sample.reshape((60,60)), 'svf_demo.png')
-    svf_demo_img = Image.open('svf_demo.png')
+    make_plot_and_save(svf_diff_var_r.reshape((60,60)), 'svf_diff.png')
+    svf_demo_img = Image.open('svf_diff.png')
     full_img = get_concat_h(full_img, svf_demo_img)
-    make_plot_and_save(svf_expected, 'svf_learned.png')
+    make_plot_and_save(pixel_loss, 'svf_learned.png')
     svf_exp_img = Image.open('svf_learned.png')
     full_img = get_concat_h(full_img, svf_exp_img)
     traj_based_zeroing = torch.zeros(reward_data.shape)

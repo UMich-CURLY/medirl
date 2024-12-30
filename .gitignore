@@ -16,4 +16,5 @@ exp/
 *.code-workspace
 *.gif
 *.png
+robo_frames/
 my_venv/
