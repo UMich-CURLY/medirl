@@ -44,8 +44,8 @@ import ros_numpy
 resume = None
 
 
-exp_name = '8.11robot'
-resume  = 'step3000-loss2.1907-train_loss0.1736.pth'
+exp_name = '7.62robot'
+resume  = 'step23000-loss1.4318-train_loss0.6622.pth'
 GRID_RESOLUTION = 0.1
 CLEARANCE_THRESH = 0.5/GRID_RESOLUTION
 GRID_SIZE_IN_M = 6
@@ -514,9 +514,9 @@ class irl():
         if len(self.im_array) == 0:
             return
         self.gif_counter+=1
-        self.im_array[0].save('robo_frames/'+exp_name+'/result'+str(self.gif_counter)+'.gif', save_all=True, append_images=self.im_array[1:], loop=0)
+        self.im_array[0].save('robo_frames/Only8/'+exp_name+'/result'+str(self.gif_counter)+'.gif', save_all=True, append_images=self.im_array[1:], loop=0)
         self.im_array = []  
-        np.save('robo_frames/'+exp_name+'/traj'+str(self.gif_counter), self.traj_array)
+        np.save('robo_frames/Only8/'+exp_name+'/traj'+str(self.gif_counter), self.traj_array)
         self.traj_array = []
         return
 
