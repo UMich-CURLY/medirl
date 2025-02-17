@@ -31,7 +31,7 @@ class OffroadGrid(object):
     """
 
     def __init__(self, grid_size, discount):
-        self.actions = ((0, 1), (1, 0), (0, -1), (-1, 0))  # 0->RIGHT, 1->UP, 2->LEFT, 3->DOWN
+        self.actions = ((0, 1), (1, 0), (0, -1), (-1, 0), (0,0))  # 0->RIGHT, 1->UP, 2->LEFT, 3->DOWN
         # 0->RIGHT, 1->RIGHT-UP, 2->UP, 3->LEFT-UP, 4->LEFT, 5->LEFT-DOWN, 6->DOWN, 7-RIGHT-DOWN
         # self.actions = ((0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1))
         self.n_actions = len(self.actions)
@@ -77,6 +77,17 @@ class OffroadGrid(object):
 
         return feat_expect
 
+    def compute_return(self, reward, traj):
+        total_reward = 0
+        discount = 1
+        for xy in traj:
+            idx = self.xy_to_idx((xy[0], xy[1]))
+            total_reward += discount * reward[idx]
+            discount *= self.discount
+        #total_reward = total_reward / traj.shape[0] * 100
+
+        return total_reward
+    
     def find_demo_svf(self, traj):
         """
         compute state visitation frequency from demostration trajectory

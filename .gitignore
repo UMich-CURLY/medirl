@@ -7,3 +7,14 @@ exp/
 .ros/
 .python_history
 .visdom
+.cache/
+.conda/
+.mozilla/
+.ipython/
+.bash_history
+*.log
+*.code-workspace
+*.gif
+*.png
+robo_frames/
+my_venv/

@@ -8,3 +8,8 @@
 -- tqdm==4.19.4
 -- visdom==0.1.8.3
 -- scikit-image==0.14.1
+-- cv2
+-- matplotlib==3.6.2
+-- ipywidgets==8.0.4
+-- Pillow==9.3.0
+-- opencv-python-headless==4.7.0.72
